@@ -10,11 +10,15 @@ from adafruit_ds3231 import adafruit_ds3231
 import os
 import wifi
 import socketpool
-
+import gc
 
 def DoTheInitThings():
-    print("Initializing boot")
-    bit_depth_value = 5
+    gc.collect()
+    print("-" * 40)
+    print(f"Initializing boot - Current free memory: {gc.mem_free()}")
+
+
+    bit_depth_value = 2
     base_width = 64
     base_height = 32
     chain_across = 1
@@ -126,6 +130,9 @@ def DoTheInitThings():
     # code. If you just want to show primary colors plus black and white, use 1.
     # Otherwise, try 3, 4 and 5 to see which effect you like best.
     #
+    gc.collect()
+    print(f"Starting display buffer - Current free memory: {gc.mem_free()}")
+
     matrix = rgbmatrix.RGBMatrix(
         width=width_value, height=height_value, bit_depth=bit_depth_value,
         rgb_pins=[board.GP2, board.GP3, board.GP4, board.GP5, board.GP8, board.GP9],
@@ -136,6 +143,12 @@ def DoTheInitThings():
 
     # Associate the RGB matrix with a Display so that we can use displayio features
     display = framebufferio.FramebufferDisplay(matrix, auto_refresh=False)
+
+    print(f"Display init successful. Free mem - {gc.mem_free()}")
+    del matrix
+    gc.collect()
+    print(f"Display init successful. Free mem - {gc.mem_free()}")
+    print("-" * 40)
 
     display.rotation = 0
     return display
@@ -163,15 +176,17 @@ def InitiateWifiConnection(num):
         return False
 
 def AttemptAllWifi():
-    wifiAttempts = 1
+    wifiAttempts = 0
     wifiSuccess = False
-    while wifiSuccess == False and wifiAttempts <= 3:
+    while wifiSuccess == False and wifiAttempts <= 4:
         wifiSuccess = InitiateWifiConnection(1)    
         wifiAttempts += 1
+        time.sleep(2)
 
     while wifiSuccess == False and wifiAttempts <= 6:
         wifiSuccess = InitiateWifiConnection(2)    
         wifiAttempts += 1
+        time.sleep(2)
     print("There were {} wifi attempts".format(wifiAttempts))
     print()
     return wifiSuccess
