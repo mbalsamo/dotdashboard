@@ -139,8 +139,11 @@ class CurrentWeather(View):
             self.WEATHER_LAST_UPDATE = now
             conditions, temperature = data.get_weather(fake = False)
             self.weatherUpdateCount += 1
-            if self.weatherUpdateCount > 82:
-                self.line2.text = f"{conditions} {temperature}° ({self.weatherUpdateCount})"
+            
+            # if temperature != "":
+            #     temperature = temperature + "°"
+            if self.weatherUpdateCount > 4:
+                self.line2.text = f"{conditions} {temperature} ({self.weatherUpdateCount})"
             else:
                 self.line2.text = f"{conditions} {temperature}°"
 

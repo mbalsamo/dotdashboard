@@ -74,7 +74,7 @@ def get_weather(fake = False, DisableDisplay = True):
             print(f"the meteorologists have failed and we have no clue what the weather is. \nReturned error status {response.status_code} - {response.text}")
             return "FAILED", "?"
     except MemoryError:
-        a, b = "mem err", ""
+        a, b = "-", ""
         print("yeah we ran out of memory.")
         if DisableDisplay:
             print("trying again but without a display")
@@ -83,9 +83,10 @@ def get_weather(fake = False, DisableDisplay = True):
 
         return a, b
     except Exception as e:
-        print("WARNING, somethign broke bigtime.")
-        print("looks like this guy ", e)
-        return e, ""
+        print("We had an error checking the weather. Memory is fine.")
+        print(e)
+        print(e.__module__) 
+        return e
 
 
 

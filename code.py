@@ -22,8 +22,7 @@ def SetRelevantView(view):
 
     # If it is between 10pm-4am, show the night clock 
     t = views.GetCurrentTime()
-    # print(f"if ({clock.tm_hour} >= 10 and {pm} == ) or ({clock.tm_hour} <= 4 and {pm} == ")
-    if (t.tm_hour > 10 and t.tm_min > 30) or (t.tm_hour < 4):
+    if (t.tm_hour == 22 and t.tm_min > 30) or t.tm_hour > 22 or t.tm_hour < 4:
         if not isinstance(view, views.NightClock):
             return views.NightClock(display) 
         else:
@@ -67,12 +66,12 @@ while True:
     memIssue = view.Display()
 
     # It's possible we had to delete the display buffer due to the lack of ram onboard 
-    if memIssue:
-        print(f"Rip, had to nuke the display. mem: {gc.mem_free()}")
-        del display
-        gc.collect()
-        print(f"done. mem: {gc.mem_free()}")
-        display = init.DoTheInitThings()
+    # if memIssue:
+    #     print(f"Rip, had to nuke the display. mem: {gc.mem_free()}")
+    #     del display
+    #     gc.collect()
+    #     print(f"done. mem: {gc.mem_free()}")
+    #     display = init.DoTheInitThings()
 
     display.refresh(minimum_frames_per_second=0)
 
