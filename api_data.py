@@ -2,13 +2,20 @@ import os
 import json
 import time
 import secrets
+import spotify_secrets
 import requests
+import binascii
+from PIL import Image
+from io import BytesIO
+
+
 
 ACCUWEATHER_API_KEY_CORE = secrets.ACCUWEATHER_API_KEY_CORE
 ACCUWEATHER_LOCATION_KEY = secrets.ACCUWEATHER_LOCATION_KEY
 SPOTIFY_CLIENT_ID = secrets.SPOTIFY_CLIENT_ID
 SPOTIFY_CLIENT_SECRET = secrets.SPOTIFY_CLIENT_SECRET
-spotify_token = secrets.SPOTIFY_ACCESS_TOKEN
+SPOTIFY_ACCESS_TOKEN = spotify_secrets.SPOTIFY_ACCESS_TOKEN
+SPOTIFY_MANUAL_AUTH_CODE = secrets.SPOTIFY_MANUAL_AUTH_CODE
 
 def get_weather(fake = False):
     try:
@@ -18,7 +25,6 @@ def get_weather(fake = False):
             return "Blue Skies are here", 75
         print("-" * 40)
         print("Attempting to summon the meteorologists for the weather")
-        print("api key", ACCUWEATHER_API_KEY_CORE)
         base_url = f"https://dataservice.accuweather.com/currentconditions/v1/{ACCUWEATHER_LOCATION_KEY}"
         params = {'apikey': ACCUWEATHER_API_KEY_CORE}
 
@@ -43,31 +49,22 @@ def get_weather(fake = False):
         return "Err :("
 
 
+def GetAlbumArt(url, name):
+    # Use requests to get the image from the URL
+    response = requests.get(url)
+    img = Image.open(BytesIO(response.content))
+
+    # Resize the image
+    resized_img = img.resize((20, 20))
+
+    # Save the image
+    resized_img.save(f"img/{name}.jpg")
+
+    # Return the image object
+    return resized_img
 
 
-# def DownloadImage(img_url, album_name):
-#    print("Preparing to download the image for", album_name)
-#    img_path_png = f"img/{album_name}.png"
-#    response = requests.get(img_url, stream=True)
-
-#    with open(img_path_png, 'wb') as file:
-#        for chunk in response.iter_content(chunk_size=1024):
-#            file.write(chunk)
-
-#    # Load the source image
-#    source_bitmap, _ = adafruit_imageload.load(img_path_png,
-#                                             bitmap=displayio.Bitmap,
-#                                             palette=displayio.Palette)
-
-#    # Create a destination bitmap with the desired size
-#    dest_bitmap = displayio.Bitmap(32, 32, 1)
-
-#    # Copy the source image to the destination bitmap with scaling
-#    bitmaptools.blit(dest_bitmap, source_bitmap, 0, 0, 0, 0, 32, 32, 128, 128)
-
-
-
-def get_spotify_token(auth_code):
+def get_spotify_token():
     print("-" * 40)
     print("Attempting to initially get the spotify token")
 
@@ -78,7 +75,7 @@ def get_spotify_token(auth_code):
         "Content-Type": "application/x-www-form-urlencoded",
         "Authorization": "Basic " + client_creds_b64
     }
-    data = f"grant_type=authorization_code&code={auth_code}&redirect_uri=https://michaelbalsamo.com"
+    data = f"grant_type=authorization_code&code={SPOTIFY_MANUAL_AUTH_CODE}&redirect_uri=https://michaelbalsamo.com"
 
     # data = "grant_type=client_credentials"
     response = requests.post(url, headers=headers, data=data)
@@ -89,50 +86,51 @@ def get_spotify_token(auth_code):
     print(token_info)
     print("we got", token_info['access_token'])
 
-    print("going to write to a new environment variable as ", token_info['access_token'])
-    os.environ['SPOTIFY_ACCESS_TOKEN'] = token_info['access_token']
+    print("-" * 40)
 
     return token_info['access_token']
 
 
-def get_current_playing_track(access_token, retry = True):
+def get_current_playing_track(fake = False, retry = True):
     print("-" * 40)
     print("getting spotify current playing song")
 
     url = "https://api.spotify.com/v1/me/player/currently-playing"
-    headers = {"Authorization": f"Bearer {access_token}"}
-    # headers = f"Authorization: Bearer {access_token}"
+    headers = {"Authorization": f"Bearer {secrets.SPOTIFY_ACCESS_TOKEN}"}
     response = requests.get(url, headers=headers)
 
     print("API Response from Spotify Current Song Request is:", response.status_code)
-    print(response.json())
+
+    if response.status_code == 204:
+        print("There is no music playing!")
+        return "", "", "", 0, 0
 
     if response.status_code == 401 and retry:
         print("API Spotify Current Song Request recieved 401 error code. Going to try to refresh the access token")
-        new_token = refresh_spotify_token(access_token)
-        return get_current_playing_track(new_token, retry=False)
+        refresh_spotify_token()
+        return get_current_playing_track(retry=False)
 
     data = response.json()
 
+    song_name = data['item']["name"]
     artist_names = [artist['name'] for artist in data['item']['artists']]
     artist_names_string = ', '.join(artist_names)
     images = data['item']['album']['images']
     albumart = min(images, key=lambda x: x['width'] * x['height'])['url']
     duration_ms = data['item']['duration_ms']
     progress_ms = data['progress_ms']
-
+    print("-" * 40)
+    print(f"Song: {song_name}")
     print(f"Artist Names: {artist_names_string}")
     print(f"Smallest Album Art URL: {albumart}")
     print(f"Duration (ms): {duration_ms}")
     print(f"Progress (ms): {progress_ms}")
-    song_name = data['item']["name"]
-    DownloadImage(albumart, song_name)
+    image = GetAlbumArt(albumart, song_name)
 
-    artist_name = data["artists"][0]["name"]
-    return song_name, artist_name
+    return song_name, artist_names_string, image, progress_ms, duration_ms, 
 
 
-def refresh_spotify_token(refresh_token):
+def refresh_spotify_token():
     print("-" * 40)
     print("Attempting to refresh the spotify token.")
     url = "https://accounts.spotify.com/api/token"
@@ -142,7 +140,7 @@ def refresh_spotify_token(refresh_token):
         "Content-Type": "application/x-www-form-urlencoded",
         "Authorization": "Basic " + client_creds_b64
     }
-    data = f"grant_type=refresh_token&refresh_token={refresh_token}"
+    data = f"grant_type=refresh_token&refresh_token={secrets.SPOTIFY_ACCESS_TOKEN}"
     response = requests.post(url, headers=headers, data=data)
     print(response.json())
     if response.status_code != 200:

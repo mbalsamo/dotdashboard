@@ -2,7 +2,7 @@ from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics
 from busio import I2C
 import board
 import time
-from adafruit_ds3231 import adafruit_ds3231
+import adafruit_ds3231
 import os
 
 i2c = I2C(board.D3, board.D2)

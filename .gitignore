@@ -1,2 +1,4 @@
 settings.toml
 secrets.py
+/lib/*
+spotify_secrets.py

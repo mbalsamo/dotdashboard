@@ -6,6 +6,7 @@ import gc
 import api_data as data
 import os
 import json
+import secrets
 
 print("|/\\" * 30)
 print("|\\/" * 30)
@@ -13,8 +14,12 @@ print("|\\/" * 30)
 matrix = init.DoTheInitThings()
 OVERRIDE_VIEW = None
 
-# OVERRIDE_VIEW = views.NightClock(display) 
-# OVERRIDE_VIEW = views.CurrentWeather(matrix) 
+if "NightClock" in sys.argv:
+   OVERRIDE_VIEW = views.NightClock(display)
+elif "CurrentWeather" in sys.argv:
+   OVERRIDE_VIEW = views.CurrentWeather(display)
+elif "SpotifyJams" in sys.argv:
+   OVERRIDE_VIEW = views.SpotifyJams(display)
 
 
 def SetRelevantView(view):
@@ -43,20 +48,17 @@ else:
 
 
 # the manual one
-auth_code = ""
-# spotify_token = data.get_spotify_token(auth_code)
-# spotify_token = ""
+
+# spotify_token = data.get_spotify_token()
 
 # spotify = {
 #    'SPOTIFY_ACCESS_TOKEN': spotify_token,
 # }
+# print("HERE WE ARE ", spotify)
+# with open('spotify_secrets.py', 'w') as file:
+#    file.write(f'SPOTIFY_ACCESS_TOKEN="{spotify_token}"')
 
-# with open('secrets.py', 'w') as file:
-#    file.write(json.dumps(spotify))
 
-
-# spotify_token = ""
-# data.get_current_playing_track(spotify_token)
 # data.refresh_spotify_token(spotify_token)
 
 # data.DownloadImage("https://i.scdn.co/image/ab67616d00004851e3a9237862f7b78057eb96dc", "music")

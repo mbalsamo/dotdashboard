@@ -2,26 +2,29 @@
 # from adafruit_bitmap_font import bitmap_font
 # from displayio import Group
 import board
-from adafruit_ds3231 import adafruit_ds3231
+import adafruit_ds3231
 import time
 import api_data as data
 from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics
 from init import i2c
 import os
 from PIL import Image
+import sys 
 
 class Line:
     def __init__(self, matrix):
-        self.canvas = matrix.CreateFrameCanvas()
 
         self.isText = True
         self.text = ""
         self.isImage = False
-        self.imageDir = ""
+        self.image = None
+        self.IsProgressBar = False
+        self.progress = 0
+        self.totalDuration = 0
 
         self.animateInitialSlide = True
         self.animateLastChange = -1
-        self.animateDelay = .15
+        self.animateDelay = .1
         self.animateAutoScroll = True
 
         self.isClock = False
@@ -29,6 +32,7 @@ class Line:
         self.font = graphics.Font()
         # self.font.LoadFont(os.path.join(os.path.dirname(os.path.realpath(__file__)), "fonts/t0-22-uni.bdf"))
         self.SetFont("pixelmix-b6.bdf")
+        
 
         self.x = 1
         self.y = 10
@@ -40,6 +44,8 @@ class Line:
 
         self.length = 0
         self.background = True
+        self.estimated_height = 7
+        self.left_margin = 1
 
     def SetFont(self, fontName):
         dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "")
@@ -57,6 +63,7 @@ class Line:
 
         # # self.subtextfont = bitmap_font.load_font("/fonts/frucs6.bdf")
         # # self.subtextfont = bitmap_font.load_font("/fonts/tb-8.bdf") #tad smaller, curvy
+
 
     def SetBigClock(self):
         print("setting big clock now")
@@ -80,9 +87,9 @@ class Line:
         # self.line1.scale = 2
         # self.line1.y = 7
 
-    def SetImage(self, imageDir):
-        self.imageDir = imageDir
-        self.isImage = True
+    # def SetImage(self, imageDir):
+    #     self.imageDir = imageDir
+    #     self.isImage = True
 
 
 
@@ -90,27 +97,24 @@ class View:
     def __init__(self, matrix):
         self.lines = []
         # subTextColor = 0xff8000
-    
+        self.canvas = matrix.CreateFrameCanvas()
+        self.shownError = False
 
     def Display(self, matrix):
         now = time.monotonic()    
+        self.canvas.Clear()
         for line in self.lines:
-            line.canvas.Clear()
-
-            # if line.background == True:
-            #     DrawRectangle(line.canvas, line.x, line.y-7, line.x + line.length, line.y,  graphics.Color(0, 22, 0))
+            if line.background == True:
+                DrawRectangle(self.canvas, line.x - line.left_margin, line.y - line.estimated_height, line.x + line.length, line.y,  graphics.Color(0, 0, 0))
 
             if line.isText:
-                line.length = graphics.DrawText(line.canvas, line.font, line.x, line.y, line.color, line.text)
+                line.length = graphics.DrawText(self.canvas, line.font, line.x, line.y, line.color, line.text)
                 if line.isClock:
                     # if line.length >= 60:
                     #     line.text = GetFriendlyTimeString(hidepm=True)
                     # else:
                     line.text = GetFriendlyTimeString()
 
-            # print("----------")
-            # print("ANALYZING LINE", line.text)
-            # print(f"if {now} >= {line.animateLastChange} + {line.animateDelay} and (({line.x} != 1 and {line.animateInitialSlide}) or ({line.animateAutoScroll} and {line.length} > 64)):")
             if now >= line.animateLastChange + line.animateDelay and ((line.x != line.min_x and line.animateInitialSlide) or (line.animateAutoScroll and line.length > line.max_x)):
                 line.animateLastChange = now
                 # pause when it hits left side
@@ -118,31 +122,41 @@ class View:
                     line.animateLastChange += 10
                 line.x = scroll(line.min_x, line.max_x, line.x, line.length)
 
+            try: 
+                if line.isImage:
+                    self.canvas.SetImage(line.image, line.x, line.y)
+            except Exception as e:
+                if not self.shownError:
+                    print("Had an error while trying to render an image.")
+                    print(e)
+                    print("Going to act like nothing happened")
+                    print("-" * 40)
+                    self.shownError = True
 
-            if line.isImage:
-                print("WE HAVE AN IMAGE???")
-                image = Image.open(line.imageDir).convert('RGB')
-                image.resize((matrix.width, matrix.height), Image.ANTIALIAS)
+            if line.IsProgressBar and line.totalDuration != 0:
+                draw_progress_bar(matrix, line.progress, line.totalDuration)
 
-                img_width = 64
-                img_height = 32 
-                xpos = 0
-                while True:
-                    xpos += 1
-                    if (xpos > img_width):
-                        xpos = 0
+                # image = Image.open(line.imageDir).convert('RGB')
+                # image.resize((matrix.width, matrix.height), Image.ANTIALIAS)
 
-                    line.canvas.SetImage(image, -xpos)
-                    line.canvas.SetImage(image, -xpos + img_width)
+                # img_width = 64
+                # img_height = 32 
+                # xpos = 0
+                # while True:
+                #     xpos += 1
+                #     if (xpos > img_width):
+                #         xpos = 0
 
-                    line.canvas = matrix.SwapOnVSync(line.canvas)
-                    time.sleep(0.01)
+                #     self.canvas.SetImage(image, -xpos)
+                #     self.canvas.SetImage(image, -xpos + img_width)
 
-            
+                #     self.canvas = matrix.SwapOnVSync(self.canvas)
+                #     time.sleep(0.01)
 
             if line.isCentered:
                 line.x = int(32 - line.length / 2)
-            line.canvas = matrix.SwapOnVSync(line.canvas)
+            
+        self.canvas = matrix.SwapOnVSync(self.canvas)
             
 
 
@@ -157,23 +171,19 @@ class CurrentWeather(View):
         self.line1.animateInitialSlide = False
         self.line1.SetBigClock()
         
-        self.line4 = Line(matrix)
-        self.line4.isText = False
-        self.line4.SetImage("ready.webp")
-        self.line4.isImage = True
-
-
         self.line2 = Line(matrix)
         self.line2.y = 30
-        self.line2.SetFont("frucs6")
+        self.line2.SetFont("tb-8")
+        # self.line2.SetFont("frucs6")
         self.line2.color = hex_to_rgb("ffe53c")
         self.line2.text = "<weather data>"
+        # Later we set line 2's maximum X and line 3's actual x. We need to do this after the initial render.
 
         self.line3 = Line(matrix)
         self.line3.y = self.line2.y
         self.line3.color = hex_to_rgb("ffe53c")
         self.line3.SetFont("frucnorm6")
-        self.line3.animateInitialSlide = False
+        self.line3.animateInitialSlide = True
 
         self.lines.append(self.line1)
         self.lines.append(self.line2)
@@ -202,7 +212,7 @@ class CurrentWeather(View):
             print("it is now time to update the weather from the view")
             self.WEATHER_LAST_UPDATE = now
             try:
-                conditions, temperature = data.get_weather(fake = False)
+                conditions, temperature = data.get_weather(fake = "fake" in sys.argv)
                 if self.weatherUpdateCount > 4:
                     self.line2.text = f"{conditions} {temperature} ({self.weatherUpdateCount})"
                 else:
@@ -218,11 +228,6 @@ class CurrentWeather(View):
         # Now that the display is rendered, we have our lengths set. Make 3 in teh right spot and set 2's max x so that they don't overlap
         self.line3.x = 64 - self.line3.length
         self.line2.max_x = self.line3.x - 2
-
-
-            
-            
-
 
 class NightClock(View):
     def __init__(self, matrix):
@@ -246,7 +251,79 @@ class NightClock(View):
         self.line1.y = int(32 - 20 / 2)
 
 
+class SpotifyJams(View):
+    def __init__(self, matrix):
+        print("Initializing the view for SPOTIFY JAMS")
+        super().__init__(matrix)
+        self.line1 = Line(matrix)
+        self.line1.animateInitialSlide = False
+        # self.line1.SetBigClock()
+        self.line1.isClock = True
+        self.animateAutoScroll = False
 
+
+        self.line2 = Line(matrix)
+        self.line2.y = 20
+        self.line2.SetFont("frucs6")
+        self.line2.color = hex_to_rgb("1f9000")
+        self.line2.text = "<artist name>"
+        self.line2.max_x = 64 - 20 - 2
+
+        self.line3 = Line(matrix)
+        self.line3.y = 30
+        self.line3.SetFont("tb-8")
+        self.line3.color = hex_to_rgb("47b800")
+        self.line3.text = "<song name>"
+
+        self.line4 = Line(matrix)
+        self.line4.x = 64 - 20
+        self.line4.y = 0
+        self.line4.isText = False
+        self.line4.isImage = True
+        self.line4.animateInitialSlide = False
+        self.line4.left_margin = 3
+
+        self.line5 = Line(matrix)
+        self.line5.IsText = False
+        self.line5.IsProgressBar = True
+
+        self.lines.append(self.line1)
+        self.lines.append(self.line2)
+        self.lines.append(self.line3)
+        self.lines.append(self.line4)
+        self.lines.append(self.line5)
+    
+    SPOTIFY_LAST_UPDATE = -99999999
+    SPOTIFY_DELAY = 10 # seconds
+
+    def Display(self, matrix):
+        now = time.monotonic()   
+        if now >= self.SPOTIFY_LAST_UPDATE + self.SPOTIFY_DELAY:
+            print("Going to poll spotify from the view!")
+            self.SPOTIFY_LAST_UPDATE = now
+            try:
+                song, artist, image, progress, totalDuration = data.get_current_playing_track(retry = True, fake = len(sys.argv) > 1 and sys.argv[1] == "fake")
+
+                self.line2.text = f"{artist}"
+                self.line3.text = f"{song}"
+                self.line4.image = image
+                self.line5.progress = progress
+                self.line5.totalDuration = totalDuration
+                if song == "":
+                    # Had an error :(
+                    SPOTIFY_DELAY = 30 * 60
+
+
+            except Exception as e:
+                print("SPOTIFY FAILED. RIP")
+                print(e)
+                self.line2.text = f"Err :("
+                self.line3.text = f"{e}"
+
+        # Now that the display is rendered, we have our lengths set. Make 3 in teh right spot and set 2's max x so that they don't overlap
+        # self.line3.x = 64 - self.line3.length
+        # self.line2.max_x = self.line3.x - 2
+        super().Display(matrix)
 
 
 
@@ -306,3 +383,27 @@ def DrawRectangle(c, x0, y0, x1, y1, color):
    for y in range(y0, y1):
        # Draw a horizontal line for each row
        graphics.DrawLine(c, x0, y, x0 + width, y, color)
+
+def clear_rectangle(canvas, x, y, width, height):
+    color = graphics.Color(0, 0, 0)  # Black color
+    for i in range(x, x + width):
+        for j in range(y, y + height):
+            canvas.SetPixel(i, j, color.red, color.green, color.blue)
+
+
+def draw_progress_bar(matrix, progress, total):
+   # Calculate the x-coordinate of the progress line
+   progress_x = int((progress / total) * 60)
+
+   # Define the colors
+   unwatched_color = (128, 128, 128) # Gray
+   watched_color = (192, 192, 192) # Light gray
+
+   # Draw the unwatched part of the line
+   matrix.DrawLine(2, 0, 64 - 4, 0, unwatched_color)
+
+   # Draw the watched part of the line
+   if progress_x > 0:
+       matrix.DrawLine(2, 0, progress_x - 1, 0, watched_color)
+
+   # Update the display
