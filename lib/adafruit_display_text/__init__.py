@@ -11,8 +11,7 @@ try:
     from typing import List, Tuple
 except ImportError:
     pass
-from displayio import Group, Palette
-
+from displayio import Palette, Group
 
 def wrap_text_to_pixels(
     string: str, max_width: int, font=None, indent0: str = "", indent1: str = ""

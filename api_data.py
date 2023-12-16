@@ -1,92 +1,69 @@
 import os
-from ssl import create_default_context
-from wifi import radio
-from socketpool import SocketPool
-from adafruit_requests import Session
-import gc
-import displayio
-import bitmaptools
-import binascii
 import json
 import time
-import adafruit_imageload
 import secrets
+import requests
 
+ACCUWEATHER_API_KEY_CORE = secrets.ACCUWEATHER_API_KEY_CORE
+ACCUWEATHER_LOCATION_KEY = secrets.ACCUWEATHER_LOCATION_KEY
+SPOTIFY_CLIENT_ID = secrets.SPOTIFY_CLIENT_ID
+SPOTIFY_CLIENT_SECRET = secrets.SPOTIFY_CLIENT_SECRET
+spotify_token = secrets.SPOTIFY_ACCESS_TOKEN
 
-ACCUWEATHER_API_KEY_CORE = os.getenv('ACCUWEATHER_API_KEY_CORE')
-ACCUWEATHER_LOCATION_KEY = os.getenv('ACCUWEATHER_LOCATION_KEY')
-SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
-SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
-spotify_token = secrets.spotify['SPOTIFY_ACCESS_TOKEN']
-
-
-pool = SocketPool(radio)
-requests = Session(pool, create_default_context())
-print("Requests module initializing")
-
-
-def DownloadImage(img_url, album_name):
-   print("Preparing to download the image for", album_name)
-   img_path_png = f"img/{album_name}.png"
-   response = requests.get(img_url, stream=True)
-
-   with open(img_path_png, 'wb') as file:
-       for chunk in response.iter_content(chunk_size=1024):
-           file.write(chunk)
-
-   # Load the source image
-   source_bitmap, _ = adafruit_imageload.load(img_path_png,
-                                            bitmap=displayio.Bitmap,
-                                            palette=displayio.Palette)
-
-   # Create a destination bitmap with the desired size
-   dest_bitmap = displayio.Bitmap(32, 32, 1)
-
-   # Copy the source image to the destination bitmap with scaling
-   bitmaptools.blit(dest_bitmap, source_bitmap, 0, 0, 0, 0, 32, 32, 128, 128)
-
-
-
-def get_weather(fake = False, DisableDisplay = True):
+def get_weather(fake = False):
     try:
+            
         if fake:
-            return "Sunny", 75
-        
+            print("Returning fake weather report")
+            return "Blue Skies are here", 75
         print("-" * 40)
-        print("Attempting to look outside for the weather")
-        gc.collect()
-        print(f"Current free memory: {gc.mem_free()}")
+        print("Attempting to summon the meteorologists for the weather")
+        print("api key", ACCUWEATHER_API_KEY_CORE)
         base_url = f"https://dataservice.accuweather.com/currentconditions/v1/{ACCUWEATHER_LOCATION_KEY}"
-        api_key_param = f"?apikey={ACCUWEATHER_API_KEY_CORE}"
-        response = requests.get(base_url + api_key_param)
-        
+        params = {'apikey': ACCUWEATHER_API_KEY_CORE}
+
+        response = requests.get(base_url, params=params)
+        response.raise_for_status()
+
         if response.status_code == 200:
-            data = response.json()
-            weather_text = data[0]['WeatherText']
-            temperature = round(data[0]['Temperature']['Imperial']['Value'])
-            print(f"The meteorologists came through for us. currently {temperature} degrees my man")
-            gc.collect()
-            print(f"Current free memory: {gc.mem_free()}")
-
-            print("-" * 40)
-            return weather_text, temperature
+            print("SUCCESS The meteorologists came through for us. Yeahhhhhhhh")
         else:
-            print(f"the meteorologists have failed and we have no clue what the weather is. \nReturned error status {response.status_code} - {response.text}")
-            return "FAILED", "?"
-    except MemoryError:
-        a, b = "-", ""
-        print("yeah we ran out of memory.")
-        if DisableDisplay:
-            print("trying again but without a display")
-            gc.collect()
-            a, b = get_weather(DisableDisplay=False)
+            print("The meteorologists ARE GONE. ERROR", response.status_code)
+            return "Response err:", response.status_code
 
-        return a, b
+        data = response.json()[0]  
+        weather_text = data['WeatherText']
+        temperature = round(data['Temperature']['Imperial']['Value'])
+
+        print(f"It is currently {weather_text}, and {temperature}F")
+        return weather_text, temperature
     except Exception as e:
-        print("We had an error checking the weather. Memory is fine.")
+        print("Weather check had an error.")
         print(e)
-        print(e.__module__) 
-        return e
+        return "Err :("
+
+
+
+
+# def DownloadImage(img_url, album_name):
+#    print("Preparing to download the image for", album_name)
+#    img_path_png = f"img/{album_name}.png"
+#    response = requests.get(img_url, stream=True)
+
+#    with open(img_path_png, 'wb') as file:
+#        for chunk in response.iter_content(chunk_size=1024):
+#            file.write(chunk)
+
+#    # Load the source image
+#    source_bitmap, _ = adafruit_imageload.load(img_path_png,
+#                                             bitmap=displayio.Bitmap,
+#                                             palette=displayio.Palette)
+
+#    # Create a destination bitmap with the desired size
+#    dest_bitmap = displayio.Bitmap(32, 32, 1)
+
+#    # Copy the source image to the destination bitmap with scaling
+#    bitmaptools.blit(dest_bitmap, source_bitmap, 0, 0, 0, 0, 32, 32, 128, 128)
 
 
 
