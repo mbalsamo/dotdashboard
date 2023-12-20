@@ -7,6 +7,7 @@ import requests
 import binascii
 from PIL import Image
 from io import BytesIO
+import traceback
 
 
 
@@ -14,10 +15,9 @@ ACCUWEATHER_API_KEY_CORE = secrets.ACCUWEATHER_API_KEY_CORE
 ACCUWEATHER_LOCATION_KEY = secrets.ACCUWEATHER_LOCATION_KEY
 SPOTIFY_CLIENT_ID = secrets.SPOTIFY_CLIENT_ID
 SPOTIFY_CLIENT_SECRET = secrets.SPOTIFY_CLIENT_SECRET
-SPOTIFY_ACCESS_TOKEN = spotify_secrets.SPOTIFY_ACCESS_TOKEN
 SPOTIFY_MANUAL_AUTH_CODE = secrets.SPOTIFY_MANUAL_AUTH_CODE
 
-def get_weather(fake = False):
+def get_weather(fake = False, retry = False):
     try:
             
         if fake:
@@ -45,23 +45,39 @@ def get_weather(fake = False):
         return weather_text, temperature
     except Exception as e:
         print("Weather check had an error.")
-        print(e)
-        return "Err :("
+        
+        if retry:
+            print("Going to wait 4 seconds and retry the weather again.")
+            time.sleep(4)
+            return get_weather(retry = False)
+
+        traceback.print_exc()
+        printRed(e)
+        return traceback.format_exc(), ""
 
 
 def GetAlbumArt(url, name):
-    # Use requests to get the image from the URL
-    response = requests.get(url)
-    img = Image.open(BytesIO(response.content))
+    file_path = f"img/{name}.jpg"
 
-    # Resize the image
-    resized_img = img.resize((20, 20))
+    # If we already have the file, just use that
+    if os.path.isfile(file_path):
+        print(f"We already have the file {name}, using that")
+        img = Image.open(file_path)
+    else:
+        # If the file does not exist, download the image
+        response = requests.get(url)
+        bigimg = Image.open(BytesIO(response.content))
 
-    # Save the image
-    resized_img.save(f"img/{name}.jpg")
+        img = bigimg.resize((21, 21))
+        img.save(file_path)
 
-    # Return the image object
-    return resized_img
+        # Delete all other files in the directory
+        for filename in os.listdir('img'):
+            if filename != f"{name}.jpg":
+                print(f"Deleting old file {filename}")
+                os.remove(f"img/{filename}")
+
+    return img
 
 
 def get_spotify_token():
@@ -80,27 +96,26 @@ def get_spotify_token():
     # data = "grant_type=client_credentials"
     response = requests.post(url, headers=headers, data=data)
     print("API Response from Spotify Token request is:", response.status_code)
-    print(response.content)
 
+    printYellow(response.content)
     token_info = json.loads(response.content)
-    print(token_info)
-    print("we got", token_info['access_token'])
+    print()
 
-    print("-" * 40)
-
-    return token_info['access_token']
+    return token_info
 
 
 def get_current_playing_track(fake = False, retry = True):
     print("-" * 40)
-    print("getting spotify current playing song")
+    print("getting spotify current playing song using this token:")
+
+    SPOTIFY_ACCESS_TOKEN = ReadSpotifyFile("access_token")
+    printLightPurple(SPOTIFY_ACCESS_TOKEN)
 
     url = "https://api.spotify.com/v1/me/player/currently-playing"
-    headers = {"Authorization": f"Bearer {secrets.SPOTIFY_ACCESS_TOKEN}"}
+    headers = {"Authorization": f"Bearer {SPOTIFY_ACCESS_TOKEN}"}
     response = requests.get(url, headers=headers)
-
+    printCyan(headers)
     print("API Response from Spotify Current Song Request is:", response.status_code)
-
     if response.status_code == 204:
         print("There is no music playing!")
         return "", "", "", 0, 0
@@ -132,7 +147,10 @@ def get_current_playing_track(fake = False, retry = True):
 
 def refresh_spotify_token():
     print("-" * 40)
-    print("Attempting to refresh the spotify token.")
+    print("Attempting to refresh the spotify token with refresh: ")
+    SPOTIFY_REFRESH_TOKEN = ReadSpotifyFile("refresh_token")
+    printLightPurple(SPOTIFY_REFRESH_TOKEN)
+
     url = "https://accounts.spotify.com/api/token"
     client_creds = f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}"
     client_creds_b64 = binascii.b2a_base64(client_creds.encode())[:-1].decode()  # remove the newline character
@@ -140,14 +158,27 @@ def refresh_spotify_token():
         "Content-Type": "application/x-www-form-urlencoded",
         "Authorization": "Basic " + client_creds_b64
     }
-    data = f"grant_type=refresh_token&refresh_token={secrets.SPOTIFY_ACCESS_TOKEN}"
+    data = f"grant_type=refresh_token&refresh_token={SPOTIFY_REFRESH_TOKEN}"
     response = requests.post(url, headers=headers, data=data)
-    print(response.json())
+    printYellow(response.json())
+    output = response.json()
     if response.status_code != 200:
         raise Exception(f"Request failed with status {response.status_code}")
-    token_info = json.loads(response.content)
-    return token_info['access_token']
 
+    printGreen("REFRESHED CODE WAS A SUCCESS!!??!? Writing new token to the secrets file")
+    if 'refresh_token' in response.json():
+        print("A new refresh token was given in response! ")
+    else:
+        print("We did not recieve a new refresh token. Saving the old one.")
+        output['refresh_token'] = SPOTIFY_REFRESH_TOKEN
+
+    with open('spotify_secrets.py', 'w') as file:
+        file.write(json.dumps(output, indent=4))
+
+def ReadSpotifyFile(item):
+    with open('spotify_secrets.py', 'r') as file:
+        data = json.load(file)
+    return data[item]
 
 
 
@@ -169,3 +200,20 @@ def is_token_expiring(access_token):
    expiry_time = access_token['created_at'] + expires_in
    # Check if the token is close to expiring
    return time.time() > expiry_time - 60 # If it's less than 60 seconds away from expiring
+
+
+def printJSON(skk): printYellow(skk)
+def printYellow(skk):
+   try:
+        json_data = json.loads(skk)
+        print("\033[93m {}\033[00m".format(json.dumps(json_data, indent=4)))
+
+   except Exception as e:
+        print("\033[93m {}\033[00m".format(skk))
+
+def printLightPurple(skk): print("\033[94m {}\033[00m" .format(skk))
+
+def printRed(skk): print("\033[91m {}\033[00m" .format(skk))
+def printGreen(skk): print("\033[92m {}\033[00m" .format(skk))
+def printPurple(skk): print("\033[95m {}\033[00m" .format(skk))
+def printCyan(skk): print("\033[96m {}\033[00m" .format(skk))

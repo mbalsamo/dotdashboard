@@ -10,6 +10,8 @@ from init import i2c
 import os
 from PIL import Image
 import sys 
+import traceback
+
 
 class Line:
     def __init__(self, matrix):
@@ -34,10 +36,10 @@ class Line:
         self.SetFont("pixelmix-b6.bdf")
         
 
-        self.x = 1
+        self.x = 2
         self.y = 10
         self.max_x = 64
-        self.min_x = 0
+        self.min_x = 1
 
         # self.color = graphics.Color(0, 85, 170) # too dark
         self.color = hex_to_rgb("0099cc")
@@ -55,7 +57,10 @@ class Line:
         if ".bdf" not in fontName:
             dir += ".bdf"
 
-        print(f"loading the font {dir}")
+        if fontName == "frucnorm6":
+            self.estimated_height = 7
+
+        # print(f"loading the font {dir}")
         self.font = graphics.Font()
         self.font.LoadFont(dir)
         # self.mainfont = bitmap_font.load_font("/fonts/frucnorm6.bdf")
@@ -73,7 +78,7 @@ class Line:
         self.animateAutoScroll = False
         self.isCentered = True
 
-        self.SetFont("IMB_EGA_8x8.bdf")
+        self.SetFont("IMB_EGA_7.bdf")
         self.y = 18
 
 
@@ -105,7 +110,7 @@ class View:
         self.canvas.Clear()
         for line in self.lines:
             if line.background == True:
-                DrawRectangle(self.canvas, line.x - line.left_margin, line.y - line.estimated_height, line.x + line.length, line.y,  graphics.Color(0, 0, 0))
+                DrawRectangle(self.canvas, line.x - line.left_margin, line.y - line.estimated_height - 2, line.x + line.length, line.y,  graphics.Color(0, 0, 0))
 
             if line.isText:
                 line.length = graphics.DrawText(self.canvas, line.font, line.x, line.y, line.color, line.text)
@@ -127,31 +132,16 @@ class View:
                     self.canvas.SetImage(line.image, line.x, line.y)
             except Exception as e:
                 if not self.shownError:
+                    # data.printRed(traceback.format_exc())
                     print("Had an error while trying to render an image.")
-                    print(e)
                     print("Going to act like nothing happened")
                     print("-" * 40)
                     self.shownError = True
 
+
             if line.IsProgressBar and line.totalDuration != 0:
-                draw_progress_bar(matrix, line.progress, line.totalDuration)
+                draw_progress_bar(self.canvas, line.progress, line.totalDuration)
 
-                # image = Image.open(line.imageDir).convert('RGB')
-                # image.resize((matrix.width, matrix.height), Image.ANTIALIAS)
-
-                # img_width = 64
-                # img_height = 32 
-                # xpos = 0
-                # while True:
-                #     xpos += 1
-                #     if (xpos > img_width):
-                #         xpos = 0
-
-                #     self.canvas.SetImage(image, -xpos)
-                #     self.canvas.SetImage(image, -xpos + img_width)
-
-                #     self.canvas = matrix.SwapOnVSync(self.canvas)
-                #     time.sleep(0.01)
 
             if line.isCentered:
                 line.x = int(32 - line.length / 2)
@@ -212,22 +202,30 @@ class CurrentWeather(View):
             print("it is now time to update the weather from the view")
             self.WEATHER_LAST_UPDATE = now
             try:
-                conditions, temperature = data.get_weather(fake = "fake" in sys.argv)
-                if self.weatherUpdateCount > 4:
-                    self.line2.text = f"{conditions} {temperature} ({self.weatherUpdateCount})"
-                else:
-                    self.line2.text = f"{conditions}"
-                    self.line3.text = f"{temperature}°"
+                conditions, temperature = data.get_weather(fake = "fake" in sys.argv, retry = True)
+                if "Partly " in conditions:
+                    conditions = conditions.replace('Partly ', '~')
+                if "Mostly " in conditions:
+                    conditions = conditions.replace('Partly ', '~')
+                self.line2.text = f"{conditions}"
+                self.line3.text = f"{temperature}°"
+                self.line2.color = hex_to_rgb("ffe53c")
+                self.line3.color = hex_to_rgb("ffe53c")
 
             except Exception as e:
                 print("WEATHER FAILED. RIP")
-                print(e)
-                self.line2.text = f"Err: {e} :("
+                data.printRed(traceback.format_exc())
+                data.printRed(e)
+                self.line2.color = graphics.Color(255, 20, 20)
+                self.line3.color = graphics.Color(255, 20, 20)
+                # self.line2.text = f"Err: {e} :("
+
 
             self.weatherUpdateCount += 1
         # Now that the display is rendered, we have our lengths set. Make 3 in teh right spot and set 2's max x so that they don't overlap
         self.line3.x = 64 - self.line3.length
         self.line2.max_x = self.line3.x - 2
+
 
 class NightClock(View):
     def __init__(self, matrix):
@@ -257,29 +255,27 @@ class SpotifyJams(View):
         super().__init__(matrix)
         self.line1 = Line(matrix)
         self.line1.animateInitialSlide = False
-        # self.line1.SetBigClock()
         self.line1.isClock = True
-        self.animateAutoScroll = False
-
+        self.line1.color = graphics.Color(154, 154, 154)
 
         self.line2 = Line(matrix)
+        self.line2.text = "<artist name>"
         self.line2.y = 20
         self.line2.SetFont("frucs6")
         self.line2.color = hex_to_rgb("1f9000")
-        self.line2.text = "<artist name>"
         self.line2.max_x = 64 - 20 - 2
 
         self.line3 = Line(matrix)
-        self.line3.y = 30
+        self.line3.text = "<song name>"
+        self.line3.y = 29
         self.line3.SetFont("tb-8")
         self.line3.color = hex_to_rgb("47b800")
-        self.line3.text = "<song name>"
 
         self.line4 = Line(matrix)
-        self.line4.x = 64 - 20
+        self.line4.isImage = True
+        self.line4.x = 64 - 21
         self.line4.y = 0
         self.line4.isText = False
-        self.line4.isImage = True
         self.line4.animateInitialSlide = False
         self.line4.left_margin = 3
 
@@ -294,11 +290,18 @@ class SpotifyJams(View):
         self.lines.append(self.line5)
     
     SPOTIFY_LAST_UPDATE = -99999999
-    SPOTIFY_DELAY = 10 # seconds
+    SPOTIFY_DELAY = 15 # seconds
+    MILLISECONDS = time.time() * 1000
 
     def Display(self, matrix):
         now = time.monotonic()   
-        if now >= self.SPOTIFY_LAST_UPDATE + self.SPOTIFY_DELAY:
+
+        # Try to add fake milliseconds even if we don't poll spotify on this tick
+        change = time.time() * 1000 - self.MILLISECONDS
+        self.line5.progress = self.line5.progress + change
+        self.MILLISECONDS = time.time() * 1000
+
+        if now >= self.SPOTIFY_LAST_UPDATE + self.SPOTIFY_DELAY or (self.line5.progress > self.line5.totalDuration and self.line5.totalDuration != 0):
             print("Going to poll spotify from the view!")
             self.SPOTIFY_LAST_UPDATE = now
             try:
@@ -310,15 +313,21 @@ class SpotifyJams(View):
                 self.line5.progress = progress
                 self.line5.totalDuration = totalDuration
                 if song == "":
-                    # Had an error :(
-                    SPOTIFY_DELAY = 30 * 60
+                    print("Had spotify return no music, so going to increase the delay to 30 sec")
+                    # No music is playing. Increase delay ?
+                    self.SPOTIFY_DELAY = 30
+                    return False
 
 
             except Exception as e:
                 print("SPOTIFY FAILED. RIP")
-                print(e)
-                self.line2.text = f"Err :("
+                data.printRed(traceback.format_exc())
+                self.line2.text = f"Spotify err :("
                 self.line3.text = f"{e}"
+                print()
+                print("Increasing spotify check delay")
+                self.SPOTIFY_DELAY = 30 * 60
+
 
         # Now that the display is rendered, we have our lengths set. Make 3 in teh right spot and set 2's max x so that they don't overlap
         # self.line3.x = 64 - self.line3.length
@@ -391,19 +400,19 @@ def clear_rectangle(canvas, x, y, width, height):
             canvas.SetPixel(i, j, color.red, color.green, color.blue)
 
 
-def draw_progress_bar(matrix, progress, total):
-   # Calculate the x-coordinate of the progress line
-   progress_x = int((progress / total) * 60)
+def draw_progress_bar(canvas, progress, total):
+    # Calculate the x-coordinate of the progress line
+    progress_x = int((progress / total) * 60)
 
-   # Define the colors
-   unwatched_color = (128, 128, 128) # Gray
-   watched_color = (192, 192, 192) # Light gray
+    # Define the colors
+    unwatched_color = graphics.Color(64, 64, 64) # Gray
+    watched_color = graphics.Color(150, 150, 150) # Light gray
 
-   # Draw the unwatched part of the line
-   matrix.DrawLine(2, 0, 64 - 4, 0, unwatched_color)
-
-   # Draw the watched part of the line
-   if progress_x > 0:
-       matrix.DrawLine(2, 0, progress_x - 1, 0, watched_color)
+    # Draw the unwatched part of the line
+    #                canvas, x1, y1, x2,     y2,  color):
+    graphics.DrawLine(canvas, 2, 31, 64 - 4, 31, unwatched_color)
+    # Draw the watched part of the line
+    if progress_x > 0:
+        graphics.DrawLine(canvas, 2, 31, progress_x - 1, 31, watched_color)
 
    # Update the display

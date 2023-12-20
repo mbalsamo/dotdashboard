@@ -1,4 +1,4 @@
 settings.toml
 secrets.py
-/lib/*
+/img/*
 spotify_secrets.py
