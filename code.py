@@ -42,6 +42,7 @@ def SetRelevantView(view):
             if song != "":
                 return views.SpotifyJams(matrix)
         except Exception as e:
+            
             print("Error when polling if spotify is currently playing...")
             data.printRed(traceback.format_exc())
             print("Going to increase polling delay to 20 m")

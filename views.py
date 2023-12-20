@@ -33,7 +33,8 @@ class Line:
         self.isCentered = False
         self.font = graphics.Font()
         # self.font.LoadFont(os.path.join(os.path.dirname(os.path.realpath(__file__)), "fonts/t0-22-uni.bdf"))
-        self.SetFont("pixelmix-b6.bdf")
+        # self.SetFont("pixelmix-b6.bdf")
+        self.SetFont("frucnorm6.bdf")
         
 
         self.x = 2
@@ -110,7 +111,12 @@ class View:
         self.canvas.Clear()
         for line in self.lines:
             if line.background == True:
-                DrawRectangle(self.canvas, line.x - line.left_margin, line.y - line.estimated_height - 2, line.x + line.length, line.y,  graphics.Color(0, 0, 0))
+                y_bottom = line.y - line.estimated_height - 2
+                if y_bottom < 0:
+                    # Image y is always on top left, despite text being 
+                    y_bottom = -y_bottom
+
+                DrawRectangle(self.canvas, line.x - line.left_margin, y_bottom, line.x + line.length, line.y,  graphics.Color(0, 0, 0))
 
             if line.isText:
                 line.length = graphics.DrawText(self.canvas, line.font, line.x, line.y, line.color, line.text)
@@ -123,7 +129,7 @@ class View:
             if now >= line.animateLastChange + line.animateDelay and ((line.x != line.min_x and line.animateInitialSlide) or (line.animateAutoScroll and line.length > line.max_x)):
                 line.animateLastChange = now
                 # pause when it hits left side
-                if line.x == 3:
+                if line.x == 2:
                     line.animateLastChange += 10
                 line.x = scroll(line.min_x, line.max_x, line.x, line.length)
 
@@ -271,13 +277,15 @@ class SpotifyJams(View):
         self.line3.SetFont("tb-8")
         self.line3.color = hex_to_rgb("47b800")
 
+        IMG_HEIGHT = 21
         self.line4 = Line(matrix)
         self.line4.isImage = True
-        self.line4.x = 64 - 21
+        self.line4.x = 64 - IMG_HEIGHT
         self.line4.y = 0
         self.line4.isText = False
         self.line4.animateInitialSlide = False
         self.line4.left_margin = 3
+        self.line4.estimated_height = -IMG_HEIGHT
 
         self.line5 = Line(matrix)
         self.line5.IsText = False
@@ -313,9 +321,8 @@ class SpotifyJams(View):
                 self.line5.progress = progress
                 self.line5.totalDuration = totalDuration
                 if song == "":
-                    print("Had spotify return no music, so going to increase the delay to 30 sec")
-                    # No music is playing. Increase delay ?
-                    self.SPOTIFY_DELAY = 30
+                    print("Had spotify return no music")
+                    # No music is playing. Return false so it'll go back to the currentweather view
                     return False
 
 
@@ -378,33 +385,15 @@ def hex_to_rgb(hex_color):
     return graphics.Color(int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16))
 
 # Jankiest method of drawing a rectangle. Does a line for each row. Whats the worst that could happen????
-# def DrawRectangle(c, x0, y0, x1, y1, height, color):
-
-#     # Draw a horizontal line for each row
-#    for y in range(0, height):
-#        DrawLine(c, x0, y, x1, y, color)
-
 def DrawRectangle(c, x0, y0, x1, y1, color):
-   # Calculate the width of the rectangle
-   width = x1 - x0
-
-   # Iterate over each row of the rectangle
    for y in range(y0, y1):
        # Draw a horizontal line for each row
-       graphics.DrawLine(c, x0, y, x0 + width, y, color)
-
-def clear_rectangle(canvas, x, y, width, height):
-    color = graphics.Color(0, 0, 0)  # Black color
-    for i in range(x, x + width):
-        for j in range(y, y + height):
-            canvas.SetPixel(i, j, color.red, color.green, color.blue)
+       graphics.DrawLine(c, x0, y, x1, y, color)
 
 
 def draw_progress_bar(canvas, progress, total):
     # Calculate the x-coordinate of the progress line
     progress_x = int((progress / total) * 60)
-
-    # Define the colors
     unwatched_color = graphics.Color(64, 64, 64) # Gray
     watched_color = graphics.Color(150, 150, 150) # Light gray
 
@@ -415,4 +404,3 @@ def draw_progress_bar(canvas, progress, total):
     if progress_x > 0:
         graphics.DrawLine(canvas, 2, 31, progress_x - 1, 31, watched_color)
 
-   # Update the display
