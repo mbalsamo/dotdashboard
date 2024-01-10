@@ -53,10 +53,13 @@ def get_weather(fake = False, retry = False):
 
         traceback.print_exc()
         printRed(e)
-        return traceback.format_exc(), ""
+        return "", ""
 
 
-def GetAlbumArt(url, name):
+def GetAlbumArt(url):
+
+    # Going to use the url as the name
+    name = url.split('/')[-1]
     file_path = f"img/{name}.jpg"
 
     # If we already have the file, just use that
@@ -105,20 +108,19 @@ def get_spotify_token():
 
 
 def get_current_playing_track(fake = False, retry = True):
-    print("-" * 40)
-    print("getting spotify current playing song using this token:")
+    # print("getting spotify current playing song using this token:")
+
+    # printLightPurple(SPOTIFY_ACCESS_TOKEN)
 
     SPOTIFY_ACCESS_TOKEN = ReadSpotifyFile("access_token")
-    printLightPurple(SPOTIFY_ACCESS_TOKEN)
-
     url = "https://api.spotify.com/v1/me/player/currently-playing"
     headers = {"Authorization": f"Bearer {SPOTIFY_ACCESS_TOKEN}"}
     response = requests.get(url, headers=headers)
-    printCyan(headers)
-    print("API Response from Spotify Current Song Request is:", response.status_code)
+    # printCyan(headers)
+    # print("API Response from Spotify Current Song Request is:", response.status_code)
     if response.status_code == 204:
         print("There is no music playing!")
-        return "", "", "", 0, 0
+        return "", "", "", 0, 0, False
 
     if response.status_code == 401 and retry:
         print("API Spotify Current Song Request recieved 401 error code. Going to try to refresh the access token")
@@ -134,20 +136,22 @@ def get_current_playing_track(fake = False, retry = True):
     albumart = min(images, key=lambda x: x['width'] * x['height'])['url']
     duration_ms = data['item']['duration_ms']
     progress_ms = data['progress_ms']
+    is_playing = data.get('is_playing', False)
     print("-" * 40)
-    print(f"Song: {song_name}")
-    print(f"Artist Names: {artist_names_string}")
-    print(f"Smallest Album Art URL: {albumart}")
-    print(f"Duration (ms): {duration_ms}")
-    print(f"Progress (ms): {progress_ms}")
-    image = GetAlbumArt(albumart, song_name)
+    print(f"Song :\033[94m {song_name}\033[00m")
+    print(f"Artist Names: \033[94m {artist_names_string}\033[00m")
+    # print(f"Smallest Album Art URL: {albumart}")
+    # print(f"Duration (ms): {duration_ms}")
+    # print(f"Progress (ms): {progress_ms}")
+    image = GetAlbumArt(albumart)
 
-    return song_name, artist_names_string, image, progress_ms, duration_ms, 
+    return song_name, artist_names_string, image, progress_ms, duration_ms, is_playing
 
 
 def refresh_spotify_token():
     print("-" * 40)
     print("Attempting to refresh the spotify token with refresh: ")
+    
     SPOTIFY_REFRESH_TOKEN = ReadSpotifyFile("refresh_token")
     printLightPurple(SPOTIFY_REFRESH_TOKEN)
 
@@ -179,8 +183,6 @@ def ReadSpotifyFile(item):
     with open('spotify_secrets.py', 'r') as file:
         data = json.load(file)
     return data[item]
-
-
 
 
 def get_new_token_if_needed(access_token, refresh_token):

@@ -1,4 +1,6 @@
 settings.toml
 secrets.py
 /img/*
+/logs/*
+**/__pycache__
 spotify_secrets.py

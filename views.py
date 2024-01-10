@@ -23,6 +23,7 @@ class Line:
         self.IsProgressBar = False
         self.progress = 0
         self.totalDuration = 0
+        self.is_playing = True
 
         self.animateInitialSlide = True
         self.animateLastChange = -1
@@ -60,6 +61,9 @@ class Line:
 
         if fontName == "frucnorm6":
             self.estimated_height = 7
+        if fontName == "frucs6":
+            self.estimated_height = 5
+
 
         # print(f"loading the font {dir}")
         self.font = graphics.Font()
@@ -109,6 +113,10 @@ class View:
     def Display(self, matrix):
         now = time.monotonic()    
         self.canvas.Clear()
+
+        # janky attempt to pause auto scrolling unless everything is at the starting position
+        pause_scroll = all((temp.x == 1 or not temp.isText or temp.isClock) for temp in self.lines)
+
         for line in self.lines:
             if line.background == True:
                 y_bottom = line.y - line.estimated_height - 2
@@ -119,17 +127,17 @@ class View:
                 DrawRectangle(self.canvas, line.x - line.left_margin, y_bottom, line.x + line.length, line.y,  graphics.Color(0, 0, 0))
 
             if line.isText:
-                line.length = graphics.DrawText(self.canvas, line.font, line.x, line.y, line.color, line.text)
                 if line.isClock:
+                    line.text = GetFriendlyTimeString(hidepm=True)
                     # if line.length >= 60:
                     #     line.text = GetFriendlyTimeString(hidepm=True)
-                    # else:
-                    line.text = GetFriendlyTimeString()
+                line.length = graphics.DrawText(self.canvas, line.font, line.x, line.y, line.color, line.text)
 
-            if now >= line.animateLastChange + line.animateDelay and ((line.x != line.min_x and line.animateInitialSlide) or (line.animateAutoScroll and line.length > line.max_x)):
+            
+            if now >= line.animateLastChange + line.animateDelay and ((line.x != line.min_x and line.animateInitialSlide) or (line.animateAutoScroll and line.length > line.max_x) and not pause_scroll):
                 line.animateLastChange = now
                 # pause when it hits left side
-                if line.x == 2:
+                if line.x == 1:
                     line.animateLastChange += 10
                 line.x = scroll(line.min_x, line.max_x, line.x, line.length)
 
@@ -138,8 +146,8 @@ class View:
                     self.canvas.SetImage(line.image, line.x, line.y)
             except Exception as e:
                 if not self.shownError:
-                    # data.printRed(traceback.format_exc())
                     print("Had an error while trying to render an image.")
+                    data.printRed(traceback.format_exc())
                     print("Going to act like nothing happened")
                     print("-" * 40)
                     self.shownError = True
@@ -251,7 +259,7 @@ class NightClock(View):
 
     def Display(self, matrix):
         super().Display(matrix)
-        self.line1.x = int(35 - self.line1.length / 2)
+        # self.line1.x = int(35 - self.line1.length / 2)
         self.line1.y = int(32 - 20 / 2)
 
 
@@ -298,23 +306,40 @@ class SpotifyJams(View):
         self.lines.append(self.line5)
     
     SPOTIFY_LAST_UPDATE = -99999999
-    SPOTIFY_DELAY = 15 # seconds
+    SPOTIFY_DELAY = 12 # seconds
     MILLISECONDS = time.time() * 1000
+
+    IS_PLAYING = False
+    TIME_PAUSED = 9999999999999999999
 
     def Display(self, matrix):
         now = time.monotonic()   
 
         # Try to add fake milliseconds even if we don't poll spotify on this tick
-        change = time.time() * 1000 - self.MILLISECONDS
-        self.line5.progress = self.line5.progress + change
-        self.MILLISECONDS = time.time() * 1000
+        if self.IS_PLAYING:
+            change = time.time() * 1000 - self.MILLISECONDS
+            self.line5.progress = self.line5.progress + change
+            self.MILLISECONDS = time.time() * 1000
+        elif now - TIME_PAUSED > 60:
+            # if it has been paused for over 60 seconds, go back to clock
+            return False
+            ################################### there's a good chance this may have broken something here after the 60 second check
+        # print(f"now {now} - TIME_PAUSED {TIME_PAUSED}")
 
         if now >= self.SPOTIFY_LAST_UPDATE + self.SPOTIFY_DELAY or (self.line5.progress > self.line5.totalDuration and self.line5.totalDuration != 0):
             print("Going to poll spotify from the view!")
             self.SPOTIFY_LAST_UPDATE = now
             try:
-                song, artist, image, progress, totalDuration = data.get_current_playing_track(retry = True, fake = len(sys.argv) > 1 and sys.argv[1] == "fake")
+                song, artist, image, progress, totalDuration, is_playing = data.get_current_playing_track(retry = True, fake = len(sys.argv) > 1 and sys.argv[1] == "fake")
 
+                # If the song changed, then reset the spot 
+                if self.line3.text != f"{song}":
+                    self.line2.x = 1
+                    self.line3.x = 1
+                if self.IS_PLAYING == True and is_playing == False:
+                    self.TIME_PAUSED = now
+
+                self.IS_PLAYING = is_playing
                 self.line2.text = f"{artist}"
                 self.line3.text = f"{song}"
                 self.line4.image = image
@@ -333,7 +358,7 @@ class SpotifyJams(View):
                 self.line3.text = f"{e}"
                 print()
                 print("Increasing spotify check delay")
-                self.SPOTIFY_DELAY = 30 * 60
+                self.SPOTIFY_DELAY = 30
 
 
         # Now that the display is rendered, we have our lengths set. Make 3 in teh right spot and set 2's max x so that they don't overlap
@@ -392,7 +417,7 @@ def DrawRectangle(c, x0, y0, x1, y1, color):
 
 
 def draw_progress_bar(canvas, progress, total):
-    # Calculate the x-coordinate of the progress line
+    # Calculate the x of the progress line
     progress_x = int((progress / total) * 60)
     unwatched_color = graphics.Color(64, 64, 64) # Gray
     watched_color = graphics.Color(150, 150, 150) # Light gray

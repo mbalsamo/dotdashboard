@@ -13,6 +13,16 @@ import time
 print("|/\\" * 30)
 print("|\\/" * 30)
 
+log = False
+
+date = f"{views.GetCurrentTime().tm_mon}-{views.GetCurrentTime().tm_mday}-{views.GetCurrentTime().tm_year} {views.GetCurrentTime().tm_hour}-{views.GetCurrentTime().tm_min}" 
+def Log(text):
+    if log:
+        with open(f'logs/log {date}.txt', 'a') as file:
+            file.write(text + "\n")
+Log("\n\n-------------------------------------")
+Log(f"Initializing new boot! {views.GetCurrentTime().tm_mon} {views.GetCurrentTime().tm_mday} {views.GetCurrentTime().tm_hour}:{views.GetCurrentTime().tm_min}")
+
 matrix = init.DoTheInitThings()
 OVERRIDE_VIEW = None
 
@@ -26,6 +36,9 @@ elif "SpotifyJams" in sys.argv:
 now = time.monotonic()
 SPOTIFY_LAST_POLL = -99999999
 SPOTIFY_POLL_DELAY = 3 * 60 
+Log("starting boot. going to check relevant view")
+
+checks = 0
 
 def SetRelevantView(view):
     if not isinstance(OVERRIDE_VIEW, type(None)):
@@ -33,26 +46,41 @@ def SetRelevantView(view):
 
     global SPOTIFY_LAST_POLL
     global SPOTIFY_POLL_DELAY
+    global checks
+    checks += 1
+
+    # If it is currently spotify, just stick with it. 
+    # In the view if we detect music not playing we can change it back...
+    if isinstance(view, views.SpotifyJams):
+        if checks < 5:
+            Log("ALREADY SPOTIFY SO LEAVING IT")
+        return view
+
+
+    if checks < 5:
+        Log("checking view")
+        Log(f"{SPOTIFY_LAST_POLL} was the last spotify poll. now is {now}")
+
     # Do a poll if spotify should be checked every few minutes 
     if now >= SPOTIFY_LAST_POLL + SPOTIFY_POLL_DELAY:
+        Log("TRYING TO DO SPOTIFY!!")
+
         print("Preparing to poll spotify for any playing music")
         SPOTIFY_LAST_POLL = time.monotonic()
         try:
-            song, artist, image, progress, totalDuration = data.get_current_playing_track(retry = True, fake = len(sys.argv) > 1 and sys.argv[1] == "fake")
+            song, artist, image, progress, totalDuration, is_playing = data.get_current_playing_track(retry = True, fake = len(sys.argv) > 1 and sys.argv[1] == "fake")
             if song != "":
                 return views.SpotifyJams(matrix)
         except Exception as e:
-            
+            Log("error polling spotify!")
+            Log(traceback.format_exc())
+
             print("Error when polling if spotify is currently playing...")
             data.printRed(traceback.format_exc())
             print("Going to increase polling delay to 20 m")
             SPOTIFY_POLL_DELAY = 20 * 60
             return views.CurrentWeather(matrix)
 
-    # If it is currently spotify, just stick with it. 
-    # In the view if we detect music not playing we can change it back...
-    if isinstance(view, views.SpotifyJams):
-        return view
 
     # If it is between 10:30pm-4am, show the night clock 
     t = views.GetCurrentTime()
@@ -68,6 +96,8 @@ def SetRelevantView(view):
         return views.CurrentWeather(matrix)
     
     return view
+
+
 
 if not isinstance(OVERRIDE_VIEW, type(None)):
     print("Debug override view set to", type(OVERRIDE_VIEW))
@@ -93,7 +123,6 @@ else:
 
 # data.refresh_spotify_token(spotify_token)
 
-# data.DownloadImage("https://i.scdn.co/image/ab67616d00004851e3a9237862f7b78057eb96dc", "music")
 
 while True:
     try:
