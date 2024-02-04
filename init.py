@@ -217,8 +217,9 @@ def DoTheInitThings():
 def setDateTime():
     # you must set year, mon, date, hour, min, sec and weekday
     # yearday is not supported, isdst can be set but we don't do anything with it at this time
-    t = time.struct_time((2023, 11, 13, 15, 34, 00, 0, -1, -1))
+    t = time.struct_time((2024, 2, 3, 20, 28, 55, 0, -1, -1))
     print(b"Setting time to:", t) 
-    i2c = busio.I2C(board.GP7, board.GP6)
+    print(b"Setting time to:", dir(board)) 
+    i2c = I2C(board.SCL, board.SDA)
     rtc = adafruit_ds3231.DS3231(i2c)
     rtc.datetime = t

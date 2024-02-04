@@ -18,7 +18,9 @@ log = False
 date = f"{views.GetCurrentTime().tm_mon}-{views.GetCurrentTime().tm_mday}-{views.GetCurrentTime().tm_year} {views.GetCurrentTime().tm_hour}-{views.GetCurrentTime().tm_min}" 
 def Log(text):
     if log:
-        with open(f'logs/log {date}.txt', 'a') as file:
+        dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "")
+
+        with open(f'{dir}logs/log_{date}.txt', 'a') as file:
             file.write(text + "\n")
 Log("\n\n-------------------------------------")
 Log(f"Initializing new boot! {views.GetCurrentTime().tm_mon} {views.GetCurrentTime().tm_mday} {views.GetCurrentTime().tm_hour}:{views.GetCurrentTime().tm_min}")
@@ -30,6 +32,8 @@ if "NightClock" in sys.argv:
    OVERRIDE_VIEW = views.NightClock(matrix)
 elif "CurrentWeather" in sys.argv:
    OVERRIDE_VIEW = views.CurrentWeather(matrix)
+elif "TodayWeather" in sys.argv:
+   OVERRIDE_VIEW = views.TodayWeather(matrix)
 elif "SpotifyJams" in sys.argv:
    OVERRIDE_VIEW = views.SpotifyJams(matrix)
 
@@ -90,6 +94,13 @@ def SetRelevantView(view):
         else:
             return view
 
+    # Show today weather if it is the morning 4am-11am
+    if (t.tm_hour > 4 and t.tm_hour < 11):
+        if not isinstance(view, views.TodayWeather):
+            return views.TodayWeather(matrix) 
+        else:
+            return view
+
     # Just default to CurrentWeather if anything else is set
     if not isinstance(view, views.CurrentWeather):
         print("Nothing is set so we are changing relevant view to CurrentWeather")
@@ -127,10 +138,10 @@ else:
 while True:
     try:
         view = SetRelevantView(view)
-        # If the display returns False, we reset the view
-        good = view.Display(matrix)
+        # If the display returns False, then the current view is done. Reset view to default
+        success = view.Display(matrix)
 
-        if good == False:
+        if success == False:
             view = None
 
     except KeyboardInterrupt:

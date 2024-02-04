@@ -1,8 +1,10 @@
 import os
 import json
 import time
+import sys
 import secrets
 import spotify_secrets
+import datetime
 import requests
 import binascii
 from PIL import Image
@@ -17,12 +19,11 @@ SPOTIFY_CLIENT_ID = secrets.SPOTIFY_CLIENT_ID
 SPOTIFY_CLIENT_SECRET = secrets.SPOTIFY_CLIENT_SECRET
 SPOTIFY_MANUAL_AUTH_CODE = secrets.SPOTIFY_MANUAL_AUTH_CODE
 
-def get_weather(fake = False, retry = False):
+def get_current_weather(fake = False, retry = False):
     try:
-            
-        if fake:
+        if fake or "fake" in sys.argv:
             print("Returning fake weather report")
-            return "Blue Skies are here", 75
+            return "Blue Skies", 75, GetWeatherImg("cloudy")
         print("-" * 40)
         print("Attempting to summon the meteorologists for the weather")
         base_url = f"https://dataservice.accuweather.com/currentconditions/v1/{ACCUWEATHER_LOCATION_KEY}"
@@ -37,30 +38,114 @@ def get_weather(fake = False, retry = False):
             print("The meteorologists ARE GONE. ERROR", response.status_code)
             return "Response err:", response.status_code
 
+        printJSON(response.json())
+
         data = response.json()[0]  
+        printJSON(data)
         weather_text = data['WeatherText']
         temperature = round(data['Temperature']['Imperial']['Value'])
 
         print(f"It is currently {weather_text}, and {temperature}F")
-        return weather_text, temperature
+        return weather_text, temperature, GetWeatherImg(weather_text)
     except Exception as e:
         print("Weather check had an error.")
+        traceback.print_exc()
         
         if retry:
             print("Going to wait 4 seconds and retry the weather again.")
-            time.sleep(4)
-            return get_weather(retry = False)
+            time.sleep(10)
+            return get_current_weather(retry = False)
+
+        traceback.print_exc()
+        printRed(e)
+        return "", "", GetWeatherImg("cloudy")
+
+def get_today_weather(fake = False, retry = False):
+    try:
+        if fake or "fake" in sys.argv:
+            print("Returning fake weather report")
+            return 75
+
+        print("-" * 40)
+        print("Attempting to summon the meteorologists for the weather")
+        base_url = f"https://dataservice.accuweather.com/forecasts/v1/hourly/12hour/{ACCUWEATHER_LOCATION_KEY}"
+        params = {'apikey': ACCUWEATHER_API_KEY_CORE}
+
+        response = requests.get(base_url, params=params)
+        response.raise_for_status()
+
+        if response.status_code == 200:
+            print("SUCCESS The meteorologists came through for us. Yeahhhhhhhh")
+        else:
+            print("The meteorologists ARE GONE. ERROR", response.status_code)
+            return "Response err:", response.status_code
+
+        printJSON(response.json())
+
+        data = response.json()[0]  
+
+        today_high = None
+        today_low = float('inf')
+        hourly_forecast = []
+
+        for data in response.json():
+            # Convert DateTime to a datetime object
+            dt = datetime.datetime.fromisoformat(data['DateTime'].replace("Z", "+00:00"))
+            
+            # Only consider hours between 7am and 7pm
+            if 7 <= dt.hour <= 19 or True: 
+                temp = data['Temperature']['Value']
+                
+                # Update today's high and low temperatures
+                today_high = max(today_high, temp) if today_high else temp
+                today_low = min(today_low, temp)
+                
+                # Add the hourly forecast to the list
+                hourly_forecast.append({
+                    'hour': dt.hour,
+                    'temperature': temp,
+                    'conditions': data['IconPhrase']
+                })
+
+        for forecast in hourly_forecast:
+            print(f"Hour: {forecast['hour']}")
+            print(f"Temperature: {forecast['temperature']}")
+            print(f"Conditions: {forecast['conditions']}")
+
+        # print("high: " + today_high)
+        # print("low: " + today_low)
+
+        print(f"Today's high is {today_high}, and the low is {today_low}F")
+        return round(today_high), round(today_low), hourly_forecast
+    except Exception as e:
+        print("Today weather check had an error.")
+        
+        # if retry:
+        #     print("Going to wait 4 seconds and retry the weather again.")
+        #     time.sleep(10)
+        #     return get_today_weather(retry = False)
 
         traceback.print_exc()
         printRed(e)
         return "", ""
 
+def GetWeatherImg(conditions):
+
+    # TODO check for file based on the param
+    dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "")
+
+    img = Image.open(f"{dir}assets/weather/cloudy.jpg")
+    print(img)
+    return img
+
+
 
 def GetAlbumArt(url):
-
     # Going to use the url as the name
     name = url.split('/')[-1]
-    file_path = f"img/{name}.jpg"
+    dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "")
+    file_path = f"assets/albumart/{name}.jpg"
+    file_path = dir + file_path
 
     # If we already have the file, just use that
     if os.path.isfile(file_path):
@@ -75,15 +160,18 @@ def GetAlbumArt(url):
         img.save(file_path)
 
         # Delete all other files in the directory
-        for filename in os.listdir('img'):
+        for filename in os.listdir(f'{dir}assets/albumart'):
             if filename != f"{name}.jpg":
                 print(f"Deleting old file {filename}")
-                os.remove(f"img/{filename}")
+                os.remove(f"{dir}/assets/albumart/{filename}")
 
     return img
 
+def get_spotify_token(fake = False):
+    if fake or "fake" in sys.argv:
+        print("Returning fake token")
+        return "5"
 
-def get_spotify_token():
     print("-" * 40)
     print("Attempting to initially get the spotify token")
 
@@ -96,7 +184,6 @@ def get_spotify_token():
     }
     data = f"grant_type=authorization_code&code={SPOTIFY_MANUAL_AUTH_CODE}&redirect_uri=https://michaelbalsamo.com"
 
-    # data = "grant_type=client_credentials"
     response = requests.post(url, headers=headers, data=data)
     print("API Response from Spotify Token request is:", response.status_code)
 
@@ -106,11 +193,13 @@ def get_spotify_token():
 
     return token_info
 
-
 def get_current_playing_track(fake = False, retry = True):
     # print("getting spotify current playing song using this token:")
 
     # printLightPurple(SPOTIFY_ACCESS_TOKEN)
+    if fake or "fake" in sys.argv:
+        print("Returning fake music")
+        return "Bippity Bop", "The Boppers", "", 5, 9, False
 
     SPOTIFY_ACCESS_TOKEN = ReadSpotifyFile("access_token")
     url = "https://api.spotify.com/v1/me/player/currently-playing"
@@ -147,8 +236,11 @@ def get_current_playing_track(fake = False, retry = True):
 
     return song_name, artist_names_string, image, progress_ms, duration_ms, is_playing
 
-
 def refresh_spotify_token():
+    if "fake" in sys.argv:
+        print("Returning fake refreshed token")
+        return ""
+
     print("-" * 40)
     print("Attempting to refresh the spotify token with refresh: ")
     
@@ -180,10 +272,11 @@ def refresh_spotify_token():
         file.write(json.dumps(output, indent=4))
 
 def ReadSpotifyFile(item):
-    with open('spotify_secrets.py', 'r') as file:
+    dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "")
+
+    with open(f'{dir}spotify_secrets.py', 'r') as file:
         data = json.load(file)
     return data[item]
-
 
 def get_new_token_if_needed(access_token, refresh_token):
    # Check if the access token is close to expiring
@@ -202,7 +295,6 @@ def is_token_expiring(access_token):
    expiry_time = access_token['created_at'] + expires_in
    # Check if the token is close to expiring
    return time.time() > expiry_time - 60 # If it's less than 60 seconds away from expiring
-
 
 def printJSON(skk): printYellow(skk)
 def printYellow(skk):

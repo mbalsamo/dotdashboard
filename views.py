@@ -19,81 +19,93 @@ class Line:
         self.isText = True
         self.text = ""
         self.isImage = False
+        self.isChart = False
         self.image = None
         self.IsProgressBar = False
         self.progress = 0
         self.totalDuration = 0
         self.is_playing = True
 
-        self.animateInitialSlide = True
+        self.animateInitialSlide = False
         self.animateLastChange = -1
         self.animateDelay = .1
         self.animateAutoScroll = True
 
         self.isClock = False
+        self.isBigClock = False
         self.isCentered = False
         self.font = graphics.Font()
-        # self.font.LoadFont(os.path.join(os.path.dirname(os.path.realpath(__file__)), "fonts/t0-22-uni.bdf"))
+        self.font_name = ""
+        # self.font.LoadFont(os.path.join(os.path.dirname(os.path.realpath(__file__)), "/assets/fonts/t0-22-uni.bdf"))
         # self.SetFont("pixelmix-b6.bdf")
         self.SetFont("frucnorm6.bdf")
         
 
         self.x = 2
         self.y = 10
+        self.x_right_aligned = False
         self.max_x = 64
         self.min_x = 1
 
         # self.color = graphics.Color(0, 85, 170) # too dark
-        self.color = hex_to_rgb("0099cc")
+        # self.color = hex_to_rgb("0099cc")
+        self.color = graphics.Color(154, 154, 154) # white-ish
+
 
         self.length = 0
         self.background = True
         self.estimated_height = 7
         self.left_margin = 1
 
+        self.canvas = None
+
     def SetFont(self, fontName):
         dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "")
-        if "fonts/" not in fontName:
-            dir += "fonts/"
+        if "assets/fonts/" not in fontName:
+            dir += "assets/fonts/"
         dir += fontName
         if ".bdf" not in fontName:
             dir += ".bdf"
 
-        if fontName == "frucnorm6":
+        if "frucnorm6" in fontName:
             self.estimated_height = 7
-        if fontName == "frucs6":
+        if "frucs6" in fontName:
             self.estimated_height = 5
 
 
         # print(f"loading the font {dir}")
         self.font = graphics.Font()
         self.font.LoadFont(dir)
-        # self.mainfont = bitmap_font.load_font("/fonts/frucnorm6.bdf")
-        # # self.mainfont = bitmap_font.load_font("/fonts/Dina_r400-6.bdf") # bit chunky
+        self.font_name = fontName
+        # self.mainfont = bitmap_font.load_font("assets/fonts/frucnorm6.bdf")
+        # # self.mainfont = bitmap_font.load_font("assets/fonts/Dina_r400-6.bdf") # bit chunky
 
-        # # self.subtextfont = bitmap_font.load_font("/fonts/frucs6.bdf")
-        # # self.subtextfont = bitmap_font.load_font("/fonts/tb-8.bdf") #tad smaller, curvy
+        # # self.subtextfont = bitmap_font.load_font("assets/fonts/frucs6.bdf")
+        # # self.subtextfont = bitmap_font.load_font("assets/fonts/tb-8.bdf") #tad smaller, curvy
 
 
-    def SetBigClock(self):
+    def SetBigClock(self, align = True):
         print("setting big clock now")
         self.isClock = True
         # self.SetFont("helvR12.bdf")
-        self.y = 11
+        # self.y = 11
+
+        self.isBigClock = True
         self.animateAutoScroll = False
-        self.isCentered = True
-
         self.SetFont("IMB_EGA_7.bdf")
-        self.y = 18
+
+        if align:
+            self.isCentered = True
+            self.y = 18
 
 
-        # self.line1.font = bitmap_font.load_font("/fonts/Px437_DOS-V_re._JPN16-16.bdf")
+        # self.line1.font = bitmap_font.load_font("assets/fonts/Px437_DOS-V_re._JPN16-16.bdf")
         # self.lines = 2
         # self.line1.y = 12
         # self.line2.y = 25
 
         # # Chunkier style
-        # self.line1.font = bitmap_font.load_font("/fonts/frucnorm6.bdf")
+        # self.line1.font = bitmap_font.load_font("assets/fonts/frucnorm6.bdf")
         # self.line1.scale = 2
         # self.line1.y = 7
 
@@ -115,7 +127,7 @@ class View:
         self.canvas.Clear()
 
         # janky attempt to pause auto scrolling unless everything is at the starting position
-        pause_scroll = all((temp.x == 1 or not temp.isText or temp.isClock) for temp in self.lines)
+        pause_scroll = all((temp.x == 2 or not temp.isText or temp.isClock) for temp in self.lines)
 
         for line in self.lines:
             if line.background == True:
@@ -128,16 +140,16 @@ class View:
 
             if line.isText:
                 if line.isClock:
-                    line.text = GetFriendlyTimeString(hidepm=True)
-                    # if line.length >= 60:
-                    #     line.text = GetFriendlyTimeString(hidepm=True)
+                    line.text = GetFriendlyTimeString(hidepm=False)
+                    if len(line.text) > 6 and line.isBigClock and "t0-22b-uni" in line.font_name:
+                        line.text = GetFriendlyTimeString(hidepm=True)
                 line.length = graphics.DrawText(self.canvas, line.font, line.x, line.y, line.color, line.text)
 
             
             if now >= line.animateLastChange + line.animateDelay and ((line.x != line.min_x and line.animateInitialSlide) or (line.animateAutoScroll and line.length > line.max_x) and not pause_scroll):
                 line.animateLastChange = now
                 # pause when it hits left side
-                if line.x == 1:
+                if line.x == 2:
                     line.animateLastChange += 10
                 line.x = scroll(line.min_x, line.max_x, line.x, line.length)
 
@@ -156,12 +168,18 @@ class View:
             if line.IsProgressBar and line.totalDuration != 0:
                 draw_progress_bar(self.canvas, line.progress, line.totalDuration)
 
-
             if line.isCentered:
                 line.x = int(32 - line.length / 2)
-            
+
+            if line.x_right_aligned:
+                line.x = 64 - line.length
+
+            if line.isChart:
+                # currently does not abide by y coordinate 
+                DrawChart(self.canvas, line.hourly_forecast, line.high, line.low, line.x, line.max_x, 15, 30, line.color)
+
         self.canvas = matrix.SwapOnVSync(self.canvas)
-            
+        return self.canvas
 
 
 
@@ -173,14 +191,13 @@ class CurrentWeather(View):
         self.line1 = Line(matrix)
         self.line1.isClock = True
         self.line1.animateInitialSlide = False
-        self.line1.SetBigClock()
+        self.line1.SetBigClock(align=False)
         
         self.line2 = Line(matrix)
         self.line2.y = 30
         self.line2.SetFont("tb-8")
-        # self.line2.SetFont("frucs6")
         self.line2.color = hex_to_rgb("ffe53c")
-        self.line2.text = "<weather data>"
+        self.line2.text = "<conditions>"
         # Later we set line 2's maximum X and line 3's actual x. We need to do this after the initial render.
 
         self.line3 = Line(matrix)
@@ -188,11 +205,23 @@ class CurrentWeather(View):
         self.line3.color = hex_to_rgb("ffe53c")
         self.line3.SetFont("frucnorm6")
         self.line3.animateInitialSlide = True
+        self.line3.x_right_aligned = True
+
+        IMG_HEIGHT = 11
+        self.line4 = Line(matrix)
+        self.line4.isImage = True
+        self.line4.x = 64 - IMG_HEIGHT
+        self.line4.y = 0
+        self.line4.isText = False
+        self.line4.animateInitialSlide = False
+        self.line4.left_margin = 3
+        self.line4.estimated_height = -IMG_HEIGHT
+
 
         self.lines.append(self.line1)
         self.lines.append(self.line2)
         self.lines.append(self.line3)
-        # self.lines.append(self.line4)
+        self.lines.append(self.line4)
 
 
 
@@ -202,7 +231,7 @@ class CurrentWeather(View):
         # self.textColor = 0x0055aa
 
     WEATHER_LAST_UPDATE = -99999999
-    WEATHER_DELAY = 30 * 60 
+    WEATHER_DELAY = 45 * 60 
     weatherUpdateCount = 0
     i = 0
 
@@ -216,15 +245,12 @@ class CurrentWeather(View):
             print("it is now time to update the weather from the view")
             self.WEATHER_LAST_UPDATE = now
             try:
-                conditions, temperature = data.get_weather(fake = "fake" in sys.argv, retry = True)
-                if "Partly " in conditions:
-                    conditions = conditions.replace('Partly ', '~')
-                if "Mostly " in conditions:
-                    conditions = conditions.replace('Partly ', '~')
+                conditions, temperature, img = data.get_current_weather(retry = True)
                 self.line2.text = f"{conditions}"
                 self.line3.text = f"{temperature}°"
                 self.line2.color = hex_to_rgb("ffe53c")
                 self.line3.color = hex_to_rgb("ffe53c")
+                self.line4.image = img
 
             except Exception as e:
                 print("WEATHER FAILED. RIP")
@@ -237,8 +263,97 @@ class CurrentWeather(View):
 
             self.weatherUpdateCount += 1
         # Now that the display is rendered, we have our lengths set. Make 3 in teh right spot and set 2's max x so that they don't overlap
-        self.line3.x = 64 - self.line3.length
-        self.line2.max_x = self.line3.x - 2
+        # self.line3.x = 64 - self.line3.length
+        # self.line2.max_x = self.line3.x - 2
+
+
+class TodayWeather(View):
+    def __init__(self, matrix):
+        print("Initializing the view for TodayWeather")
+        super().__init__(matrix)
+
+        self.line_clock = Line(matrix)
+        self.line_clock.isClock = True
+        self.line_clock.animateInitialSlide = False
+        self.line_clock.SetBigClock(align=False)
+        self.lines.append(self.line_clock)
+        
+        self.line_temp_high = Line(matrix)
+        self.line_temp_high.y = 22
+        self.line_temp_high.background = False
+        self.line_temp_high.SetFont("tb-8")
+        self.line_temp_high.color = graphics.Color(176, 65, 62) # Red for HIGH
+        self.line_temp_high.text = "50^"
+        self.lines.append(self.line_temp_high)
+
+        self.line_temp_low = Line(matrix)
+        self.line_temp_low.y = 30
+        self.line_temp_low.background = False
+        self.line_temp_low.SetFont("tb-8")
+        self.line_temp_low.color = hex_to_rgb("0055aa") # Baby blue for LOW
+        self.line_temp_low.text = "40`"
+        self.lines.append(self.line_temp_low)
+
+        self.line_chart = Line(matrix)
+        self.line_chart.y = 40
+        self.line_chart.x = 20
+        self.line_chart.color = graphics.Color(150, 150, 150)
+        self.line_chart.isText = False
+        self.line_chart.isChart = True
+        self.line_chart.high = 0
+        self.line_chart.low = 0
+        self.line_chart.hourly_forecast = []
+        self.line_chart.background = False
+        self.lines.append(self.line_chart)
+
+        IMG_HEIGHT = 11
+        self.line_img = Line(matrix)
+        self.line_img.isImage = True
+        self.line_img.y = 1
+        self.line_img.isText = False
+        self.line_img.animateInitialSlide = False
+        self.line_img.left_margin = 3
+        self.line_img.estimated_height = -IMG_HEIGHT
+        self.line_img.x_right_aligned = True
+        self.lines.append(self.line_img)
+
+
+        # self.line1.color = 0x0055aa # nice sky blue
+        # # self.line1.color = 0xaaffff # diamond baby blue
+        # self.line2.color = 0xff5500 # nice yelllow
+        # self.textColor = 0x0055aa
+
+    WEATHER_LAST_UPDATE = -99999999
+    WEATHER_DELAY = 60 * 60 
+    weatherUpdateCount = 0
+    i = 0
+
+    def Display(self, matrix):
+        # Perform the default scrolling
+        canvas = super().Display(matrix)
+
+        now = time.monotonic()   
+        if now >= self.WEATHER_LAST_UPDATE + self.WEATHER_DELAY:
+            print("it is now time to update TODAY's weather from the view")
+            self.WEATHER_LAST_UPDATE = now
+                
+            high, low, hourly_forecast = data.get_today_weather(retry = True)
+            self.line_chart.hourly_forecast = hourly_forecast
+            self.line_chart.high = high
+            self.line_chart.low = low
+            self.line_temp_high.text = f"{high}^"
+            self.line_temp_low.text = f"{low}`"
+            self.canvas = matrix.SwapOnVSync(self.canvas)
+
+            # self.line_chart.x = self.line_temp_high.x + self.line_temp_high.length + 2
+            self.line_chart.x = 18
+            self.line_chart.max_x = 64-2
+
+
+            self.weatherUpdateCount += 1
+        # DrawChart(canvas, self.hourly_forecast, self.high, self.low, 30, 60, 15, 30, hex_to_rgb("ffe53c"))
+        # Now that the display is rendered, we have our lengths set. Make 3 in teh right spot and set 2's max x so that they don't overlap
+        # self.line2.max_x = self.line3.x - 2
 
 
 class NightClock(View):
@@ -255,7 +370,7 @@ class NightClock(View):
         matrix.brightness = 50
 
         # self.line1.color = 0xFF0000
-        # self.subtextfont = bitmap_font.load_font("/fonts/frucs6.bdf")
+        # self.subtextfont = bitmap_font.load_font("/assets/fonts/frucs6.bdf")
 
     def Display(self, matrix):
         super().Display(matrix)
@@ -320,7 +435,7 @@ class SpotifyJams(View):
             change = time.time() * 1000 - self.MILLISECONDS
             self.line5.progress = self.line5.progress + change
             self.MILLISECONDS = time.time() * 1000
-        elif now - TIME_PAUSED > 60:
+        elif now - self.TIME_PAUSED > 60:
             # if it has been paused for over 60 seconds, go back to clock
             return False
             ################################### there's a good chance this may have broken something here after the 60 second check
@@ -366,9 +481,6 @@ class SpotifyJams(View):
         # self.line2.max_x = self.line3.x - 2
         super().Display(matrix)
 
-
-
-
 def GetCurrentTime(): 
     rtc = adafruit_ds3231.DS3231(i2c)
     t = rtc.datetime
@@ -391,7 +503,7 @@ def GetFriendlyTimeString(hidepm = False):
         am_pm = "am"
     
     if hidepm:
-        return "{}:{:02d} ".format(hours, minutes)
+        return "{}:{:02d}".format(hours, minutes)
     return "{}:{:02d}{}".format(hours, minutes, am_pm)
 
 def scroll(min_x, max_x, pos, len):
@@ -429,3 +541,32 @@ def draw_progress_bar(canvas, progress, total):
     if progress_x > 0:
         graphics.DrawLine(canvas, 2, 31, progress_x - 1, 31, watched_color)
 
+
+def DrawChart(canvas, hourly_forecast, today_high, today_low, left_x_boundary, max_x_boundary, min_y_boundary, max_y_boundary, color):
+    try:
+        # Normalize the hourly forecast data to fit within the given boundaries
+        normalized_forecast = []
+        height = max_y_boundary - min_y_boundary
+        for i, forecast in enumerate(hourly_forecast):
+            # Map the hour to the x-coordinate
+            x = left_x_boundary + ((max_x_boundary - left_x_boundary) * i / len(hourly_forecast))
+            
+            # Map the temperature to the y-coordinate
+            y = min_y_boundary + ((max_y_boundary - min_y_boundary) * (forecast['temperature'] - today_low) / (today_high - today_low))
+            
+            normalized_forecast.append((x, -y+32+(height/2), forecast['hour']))
+        
+        # Draw a line connecting the normalized forecast data
+        prev_x, prev_y, prev_hr = normalized_forecast[0]
+        for x, y, hr in normalized_forecast[1:]:
+            # print(f"chart {hr}: {prev_x}, {prev_y}, {x}, {y}")
+            if hr == 12:
+                graphics.DrawLine(canvas, prev_x, prev_y, x, y, hex_to_rgb("ffe53c"))
+            else:
+                graphics.DrawLine(canvas, prev_x, prev_y, x, y, color)
+            prev_x, prev_y = x, y
+
+    except Exception as e:
+        print("Drawing the chart did not go as planned.")
+        data.printRed(traceback.format_exc())
+        data.printRed(e)
