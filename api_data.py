@@ -7,11 +7,11 @@ import spotify_secrets
 import datetime
 import requests
 import binascii
+import random
+from init import Log
 from PIL import Image
 from io import BytesIO
 import traceback
-
-
 
 ACCUWEATHER_API_KEY_CORE = secrets.ACCUWEATHER_API_KEY_CORE
 ACCUWEATHER_LOCATION_KEY = secrets.ACCUWEATHER_LOCATION_KEY
@@ -22,10 +22,10 @@ SPOTIFY_MANUAL_AUTH_CODE = secrets.SPOTIFY_MANUAL_AUTH_CODE
 def get_current_weather(fake = False, retry = False):
     try:
         if fake or "fake" in sys.argv:
-            print("Returning fake weather report")
-            return "Blue Skies", 75, GetWeatherImg("cloudy")
-        print("-" * 40)
-        print("Attempting to summon the meteorologists for the weather")
+            Log("Returning fake weather report")
+            return "Blue Skies Are Here", 75, get_weather_image("sun")
+        Log("-" * 40)
+        Log("Attempting to summon the meteorologists for the weather")
         base_url = f"https://dataservice.accuweather.com/currentconditions/v1/{ACCUWEATHER_LOCATION_KEY}"
         params = {'apikey': ACCUWEATHER_API_KEY_CORE}
 
@@ -33,9 +33,9 @@ def get_current_weather(fake = False, retry = False):
         response.raise_for_status()
 
         if response.status_code == 200:
-            print("SUCCESS The meteorologists came through for us. Yeahhhhhhhh")
+            Log("SUCCESS The meteorologists came through for us. Yeahhhhhhhh")
         else:
-            print("The meteorologists ARE GONE. ERROR", response.status_code)
+            Log("The meteorologists ARE GONE. ERROR" + response.status_code)
             return "Response err:", response.status_code
 
         printJSON(response.json())
@@ -45,20 +45,19 @@ def get_current_weather(fake = False, retry = False):
         weather_text = data['WeatherText']
         temperature = round(data['Temperature']['Imperial']['Value'])
 
-        print(f"It is currently {weather_text}, and {temperature}F")
-        return weather_text, temperature, GetWeatherImg(weather_text)
+        Log(f"It is currently {weather_text}, and {temperature}F")
+        return weather_text, temperature, get_weather_image(weather_text)
     except Exception as e:
-        print("Weather check had an error.")
+        Log("Weather check had an error.")
         traceback.print_exc()
         
         if retry:
-            print("Going to wait 4 seconds and retry the weather again.")
+            Log("Going to wait 4 seconds and retry the weather again.")
             time.sleep(10)
             return get_current_weather(retry = False)
 
-        traceback.print_exc()
         printRed(e)
-        return "", "", GetWeatherImg("cloudy")
+        return "", "", get_weather_image("")
 
 def get_today_weather(fake = False, retry = False):
     try:
@@ -112,9 +111,6 @@ def get_today_weather(fake = False, retry = False):
             print(f"Temperature: {forecast['temperature']}")
             print(f"Conditions: {forecast['conditions']}")
 
-        # print("high: " + today_high)
-        # print("low: " + today_low)
-
         print(f"Today's high is {today_high}, and the low is {today_low}F")
         return round(today_high), round(today_low), hourly_forecast
     except Exception as e:
@@ -129,51 +125,94 @@ def get_today_weather(fake = False, retry = False):
         printRed(e)
         return "", ""
 
-def GetWeatherImg(conditions):
 
-    # TODO check for file based on the param
+def get_weather_image(conditions):
     dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "")
 
-    img = Image.open(f"{dir}assets/weather/cloudy.jpg")
+    conditions = conditions.lower()
+    filename = ""
+    if "cloudy" in conditions:
+        filename = "cloudy.jpg"
+    elif "mostly sunny" in conditions or "partly sunny" in conditions:
+        # filename = "sun-clouds-anim.GIF"
+        options = ["sun-clouds.PNG", "sun-clouds-alt.PNG"]
+        filename = random.choice(options)
+    elif "sun" in conditions:
+        options = ["sun-alt.PNG", "sun-alt-glasses.PNG", "sun-alt-lighter.PNG", "sun.PNG"]
+        filename = random.choice(options)
+    elif "storm" in conditions:
+        filename = "thunderstorm.PNG"
+    elif "heavy rain" in conditions:
+        filename = "rain-heavy.PNG"
+    elif "rain" in conditions or "showers" in conditions:
+        options = ["rain.PNG"]
+        filename = random.choice(options)
+    elif "clear" in conditions:
+        options = ["moon.PNG"]
+        filename = random.choice(options)
+
+    if filename == "":
+        return ""
+
+    Log(f"Getting {filename} weather image for conditions: {conditions}")
+
+    try:
+        img = Image.open(f"{dir}assets/weather/{filename}")
+        img = img.convert('RGB')
+        
+    except Exception as e:
+        Log(f"Failed to open the file '{filename}' for conditions '{conditions}'")
+        return ""
+
     print(img)
     return img
 
 
-
-def GetAlbumArt(url):
+def get_album_art(url):
     # Going to use the url as the name
     name = url.split('/')[-1]
     dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "")
     file_path = f"assets/albumart/{name}.jpg"
     file_path = dir + file_path
+    color = None
 
     # If we already have the file, just use that
     if os.path.isfile(file_path):
-        print(f"We already have the file {name}, using that")
         img = Image.open(file_path)
+        color = get_dominant_color(img)
     else:
-        # If the file does not exist, download the image
-        response = requests.get(url)
-        bigimg = Image.open(BytesIO(response.content))
+        try:
+            # If the file does not exist, download the image
+            response = requests.get(url)
+            bigimg = Image.open(BytesIO(response.content))
 
-        img = bigimg.resize((21, 21))
-        img.save(file_path)
+            color = get_dominant_color(bigimg)
 
-        # Delete all other files in the directory
-        for filename in os.listdir(f'{dir}assets/albumart'):
-            if filename != f"{name}.jpg":
-                print(f"Deleting old file {filename}")
-                os.remove(f"{dir}/assets/albumart/{filename}")
+            img = bigimg.resize((21, 21))
+            img.save(file_path)
 
-    return img
+            Log("Using image " + file_path)
+            print(img)
+            # Delete all other files in the directory
+            for filename in os.listdir(f'{dir}assets/albumart'):
+                if filename != f"{name}.jpg":
+                    print(f"Deleting old file {filename}")
+                    os.remove(f"{dir}/assets/albumart/{filename}")
+                    
+        except Exception as e:
+            LOG("HAD SOME PROBLEMS IN GETTING ALBUM ART??")
+            print(e)
+            return "", None
+
+    return img, color
 
 def get_spotify_token(fake = False):
     if fake or "fake" in sys.argv:
-        print("Returning fake token")
+        Log("Returning fake token")
         return "5"
-
-    print("-" * 40)
-    print("Attempting to initially get the spotify token")
+    
+    Log("-" * 40)
+    Log("Attempting to initially get the spotify token")
 
     url = "https://accounts.spotify.com/api/token"
     client_creds = f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}"
@@ -185,34 +224,42 @@ def get_spotify_token(fake = False):
     data = f"grant_type=authorization_code&code={SPOTIFY_MANUAL_AUTH_CODE}&redirect_uri=https://michaelbalsamo.com"
 
     response = requests.post(url, headers=headers, data=data)
-    print("API Response from Spotify Token request is:", response.status_code)
+    Log("API Response from Spotify Token request is:", response.status_code)
 
     printYellow(response.content)
     token_info = json.loads(response.content)
-    print()
+    Log()
 
     return token_info
 
 def get_current_playing_track(fake = False, retry = True):
-    # print("getting spotify current playing song using this token:")
-
-    # printLightPurple(SPOTIFY_ACCESS_TOKEN)
     if fake or "fake" in sys.argv:
-        print("Returning fake music")
-        return "Bippity Bop", "The Boppers", "", 5, 9, False
+        Log("Returning fake music")
+        return "Bippity Bop", "The Boppers", get_weather_image("sun"), None, 5, 9, False
 
-    SPOTIFY_ACCESS_TOKEN = ReadSpotifyFile("access_token")
+    SPOTIFY_ACCESS_TOKEN = read_spotify_file("access_token")
     url = "https://api.spotify.com/v1/me/player/currently-playing"
     headers = {"Authorization": f"Bearer {SPOTIFY_ACCESS_TOKEN}"}
-    response = requests.get(url, headers=headers)
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as errh:
+        print("Http Error: ", errh)
+    except requests.exceptions.ConnectionError as errc:
+        print("Error Connecting: ", errc)
+    except requests.exceptions.Timeout as errt:
+        print("Timeout Error: ", errt)
+    except requests.exceptions.RequestException as err:
+        print("Something Else: ", err)
+
     # printCyan(headers)
-    # print("API Response from Spotify Current Song Request is:", response.status_code)
+    # Log("API Response from Spotify Current Song Request is:", response.status_code)
     if response.status_code == 204:
-        print("There is no music playing!")
-        return "", "", "", 0, 0, False
+        Log("There is no music playing!")
+        return "", "", "", None, 0, 0, False
 
     if response.status_code == 401 and retry:
-        print("API Spotify Current Song Request recieved 401 error code. Going to try to refresh the access token")
+        Log("Spotify Current Song Request recieved 401 error code. Going to try to refresh the access token")
         refresh_spotify_token()
         return get_current_playing_track(retry=False)
 
@@ -226,25 +273,22 @@ def get_current_playing_track(fake = False, retry = True):
     duration_ms = data['item']['duration_ms']
     progress_ms = data['progress_ms']
     is_playing = data.get('is_playing', False)
-    print("-" * 40)
-    print(f"Song :\033[94m {song_name}\033[00m")
-    print(f"Artist Names: \033[94m {artist_names_string}\033[00m")
-    # print(f"Smallest Album Art URL: {albumart}")
-    # print(f"Duration (ms): {duration_ms}")
-    # print(f"Progress (ms): {progress_ms}")
-    image = GetAlbumArt(albumart)
+    Log(f"Song :\033[94m {song_name}\033[00m")
+    Log(f"Artist Names: \033[94m {artist_names_string}\033[00m")
+    Log("-" * 40)
+    image, color = get_album_art(albumart)
 
-    return song_name, artist_names_string, image, progress_ms, duration_ms, is_playing
+    return song_name, artist_names_string, image, color, progress_ms, duration_ms, is_playing
 
 def refresh_spotify_token():
     if "fake" in sys.argv:
-        print("Returning fake refreshed token")
+        Log("Returning fake refreshed token")
         return ""
 
-    print("-" * 40)
-    print("Attempting to refresh the spotify token with refresh: ")
+    Log("-" * 40)
+    Log("Attempting to refresh the spotify token with refresh: ")
     
-    SPOTIFY_REFRESH_TOKEN = ReadSpotifyFile("refresh_token")
+    SPOTIFY_REFRESH_TOKEN = read_spotify_file("refresh_token")
     printLightPurple(SPOTIFY_REFRESH_TOKEN)
 
     url = "https://accounts.spotify.com/api/token"
@@ -263,15 +307,47 @@ def refresh_spotify_token():
 
     printGreen("REFRESHED CODE WAS A SUCCESS!!??!? Writing new token to the secrets file")
     if 'refresh_token' in response.json():
-        print("A new refresh token was given in response! ")
+        Log("A new refresh token was given in response! ")
     else:
-        print("We did not recieve a new refresh token. Saving the old one.")
+        Log("We did not recieve a new refresh token. Saving the old one.")
         output['refresh_token'] = SPOTIFY_REFRESH_TOKEN
 
     with open('spotify_secrets.py', 'w') as file:
         file.write(json.dumps(output, indent=4))
+        
+# source: https://stackoverflow.com/a/61730849
+def get_dominant_color(pil_img, palette_size=16, num_colors=10):
+    # Resize image to speed up processing
+    img = pil_img.copy()
+    img.thumbnail((100, 100))
 
-def ReadSpotifyFile(item):
+    # Reduce colors (uses k-means internally)
+    paletted = img.convert('P', palette=Image.ADAPTIVE, colors=palette_size)
+
+    # Find the color that occurs most often
+    palette = paletted.getpalette()
+    color_counts = sorted(paletted.getcolors(), reverse=True)
+
+    dominant_colors = []
+    for i in range(num_colors):
+      palette_index = color_counts[i][1]
+      dominant_colors.append(palette[palette_index*3:palette_index*3+3])
+
+    #  Sort through to find a lighter color
+    out = dominant_colors[0]
+    i = 1
+    print("Dominant colors in this image:")
+    print(dominant_colors)
+    while out[0] < 70 and out[1] < 70 and out[2] < 70 and i != num_colors:
+        print(f"color {i} was too dark ({out}). Going to next color.")
+        out = dominant_colors[i]
+        i += 1
+    Log(f"decided on color {out}")
+
+    return out
+
+
+def read_spotify_file(item):
     dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "")
 
     with open(f'{dir}spotify_secrets.py', 'r') as file:

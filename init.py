@@ -4,6 +4,7 @@ import board
 import time
 import adafruit_ds3231
 import os
+import sys
 
 i2c = I2C(board.D3, board.D2)
 rtc = adafruit_ds3231.DS3231(i2c)
@@ -214,12 +215,33 @@ def DoTheInitThings():
 #     return wifiSuccess
 
 
-def setDateTime():
+def SetDateTime():
     # you must set year, mon, date, hour, min, sec and weekday
     # yearday is not supported, isdst can be set but we don't do anything with it at this time
-    t = time.struct_time((2024, 2, 3, 20, 28, 55, 0, -1, -1))
+    t = time.struct_time((2024, 5, 12, 19, 8, 00, 0, -1, -1))
     print(b"Setting time to:", t) 
     print(b"Setting time to:", dir(board)) 
     i2c = I2C(board.SCL, board.SDA)
     rtc = adafruit_ds3231.DS3231(i2c)
     rtc.datetime = t
+
+log = False
+filename = f"{rtc.datetime.tm_year}-{rtc.datetime.tm_mon}-{rtc.datetime.tm_mday} {rtc.datetime.tm_hour}-{rtc.datetime.tm_min}-{rtc.datetime.tm_sec}" 
+
+if "on-boot" in sys.argv:
+    filename += " auto"
+else:
+    filename += " manual"
+
+if "fake" in sys.argv:
+    filename += " fake"
+
+
+def Log(text):
+    print(text)
+    if log:
+        dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "")
+        with open(f'{dir}logs/{filename}.txt', 'a') as file:
+            file.write(text + "\n")
+
+        

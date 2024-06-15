@@ -4,3 +4,4 @@ secrets.py
 /logs/*
 **/__pycache__
 spotify_secrets.py
+/assets/albumart/*
