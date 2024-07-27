@@ -13,7 +13,6 @@ import time
 print("|/\\" * 30)
 print("|\\/" * 30)
 
-print(os.environ)
 init.Log("\n\n-------------------------------------")
 init.Log(f"Initializing new boot! {views.GetCurrentTime().tm_mon} {views.GetCurrentTime().tm_mday} {views.GetCurrentTime().tm_hour}:{views.GetCurrentTime().tm_min}")
 
@@ -28,7 +27,6 @@ elif "CurrentWeather" in sys.argv:
    OVERRIDE_VIEW = views.CurrentWeather(matrix)
 elif "SpotifyJams" in sys.argv:
    OVERRIDE_VIEW = views.SpotifyJams(matrix)
-
 print("Running with custom debug params: ", sys.argv)
 
 now = time.monotonic()
@@ -66,8 +64,8 @@ def SetRelevantView(view):
         SPOTIFY_LAST_POLL = time.monotonic()
         try:
             song, artist, image, color, progress, totalDuration, is_playing = data.get_current_playing_track(retry = True, fake = len(sys.argv) > 1 and sys.argv[1] == "fake")
-            if song != "":
-                init.Log("SPOTIFY is playing" + song)
+            if song != "" and is_playing:
+                init.Log("SPOTIFY is playing music right now, so starting Spotify view")
                 return views.SpotifyJams(matrix)
             init.Log("No spotify song playing")
         except Exception as e:

@@ -1,6 +1,3 @@
-# import adafruit_display_text.label
-# from adafruit_bitmap_font import bitmap_font
-# from displayio import Group
 import board
 import adafruit_ds3231
 import time
@@ -270,31 +267,29 @@ class CurrentWeather(View):
                 self.line3.text = f"{temperature}°"
                 self.line5.image = img
 
-                color = data.get_dominant_color(img, num_colors = 2)
-                self.line2.color = graphics.Color(color[0], color[1], color[2])
-                self.line3.color = graphics.Color(min(color[0]+10, 250), min(color[1]+10, 250), min(color[2]+10, 250))
 
-                # if "cloudy" in conditions:
-                #     self.line2.color = hex_to_rgb("717171")
-                #     self.line3.color = hex_to_rgb("858585") #grey 
-                # elif "mostly sunny" in conditions or "partly sunny" in conditions:
-                #     self.line2.color = hex_to_rgb("ffe53c") #yellow 
-                #     self.line3.color = hex_to_rgb("ffe53c")
-                # elif "sunny" in conditions:
-                #     self.line2.color = hex_to_rgb("ffe53c") #yellow 
-                #     self.line3.color = hex_to_rgb("ffe53c")
-                # elif "thunderstorm" in conditions:
-                #     self.line2.color = hex_to_rgb("0085b8")
-                #     self.line3.color = hex_to_rgb("0071a4") # dark blue
-                # elif "heavy rain" in conditions:
-                #     self.line2.color = hex_to_rgb("0055aa") #blue 
-                #     self.line3.color = hex_to_rgb("0061b8")
-                # elif "rain" in conditions:
-                #     self.line2.color = hex_to_rgb("0055aa") #blue 
-                #     self.line3.color = hex_to_rgb("0061b8")
-                # else:
-                #     self.line2.color = hex_to_rgb("858585") #grey 
-                #     self.line3.color = hex_to_rgb("717171")
+                if "cloudy" in conditions:
+                    self.line2.color = hex_to_rgb("717171")
+                    self.line3.color = hex_to_rgb("858585") #grey 
+                elif "mostly sunny" in conditions or "partly sunny" in conditions:
+                    self.line2.color = hex_to_rgb("ffe53c") #yellow 
+                    self.line3.color = hex_to_rgb("ffe53c")
+                elif "sunny" in conditions:
+                    self.line2.color = hex_to_rgb("ffe53c") #yellow 
+                    self.line3.color = hex_to_rgb("ffe53c")
+                elif "thunderstorm" in conditions:
+                    self.line2.color = hex_to_rgb("0085b8")
+                    self.line3.color = hex_to_rgb("0071a4") # dark blue
+                elif "heavy rain" in conditions:
+                    self.line2.color = hex_to_rgb("0055aa") #blue 
+                    self.line3.color = hex_to_rgb("0061b8")
+                elif "rain" in conditions:
+                    self.line2.color = hex_to_rgb("0055aa") #blue 
+                    self.line3.color = hex_to_rgb("0061b8")
+                else:
+                    color = data.get_dominant_color(img, num_colors = 2)
+                    self.line2.color = graphics.Color(color[0], color[1], color[2])
+                    self.line3.color = graphics.Color(min(color[0]+10, 250), min(color[1]+10, 250), min(color[2]+10, 250))
 
                 # self.line2.max_x = self.line3.x
 
