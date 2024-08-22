@@ -13,8 +13,8 @@ import time
 print("|/\\" * 30)
 print("|\\/" * 30)
 
-init.Log("\n\n-------------------------------------")
-init.Log(f"Initializing new boot! {views.GetCurrentTime().tm_mon} {views.GetCurrentTime().tm_mday} {views.GetCurrentTime().tm_hour}:{views.GetCurrentTime().tm_min}")
+init.log("\n\n-------------------------------------")
+init.log(f"Initializing new boot! {views.GetCurrentTime().tm_mon} {views.GetCurrentTime().tm_mday} {views.GetCurrentTime().tm_hour}:{views.GetCurrentTime().tm_min}")
 
 matrix = init.DoTheInitThings()
 OVERRIDE_VIEW = None
@@ -32,13 +32,12 @@ print("Running with custom debug params: ", sys.argv)
 now = time.monotonic()
 SPOTIFY_LAST_POLL = -99999
 SPOTIFY_POLL_DELAY = 30 
-init.Log("starting boot. going to check relevant view")
+init.log("starting boot. going to check relevant view")
 
 checks = 0
 # When this launches on boot, we need to give it time to connect and do its thing
 if "on-boot" in sys.argv:
-    time.sleep(15)
-
+    time.sleep(18)
 
 def SetRelevantView(view):
     if not isinstance(OVERRIDE_VIEW, type(None)):
@@ -55,46 +54,49 @@ def SetRelevantView(view):
     if isinstance(view, views.SpotifyJams):
         return view
 
-    if checks % 1000 == 0:
-        init.Log(f"Spotify was the last checked at {round(SPOTIFY_LAST_POLL, 1)}. It is currently {round(now, 1)}")
-
     # Do a poll if spotify should be checked every few minutes 
     if now >= SPOTIFY_LAST_POLL + SPOTIFY_POLL_DELAY:
-        init.Log("Checking Spotify NOW!!")
+        print("Checking Spotify NOW!!")
         SPOTIFY_LAST_POLL = time.monotonic()
         try:
             song, artist, image, color, progress, totalDuration, is_playing = data.get_current_playing_track(retry = True, fake = len(sys.argv) > 1 and sys.argv[1] == "fake")
             if song != "" and is_playing:
-                init.Log("SPOTIFY is playing music right now, so starting Spotify view")
+                init.log("SPOTIFY is playing music right now, so starting Spotify view")
                 return views.SpotifyJams(matrix)
-            init.Log("No spotify song playing")
+            print("No spotify song playing")
         except Exception as e:
-            init.Log("error polling spotify for current playing!")
-            init.Log(traceback.format_exc())
+            init.log("error polling spotify for current playing!")
+            init.log(traceback.format_exc())
 
             data.printRed(traceback.format_exc())
             if (SPOTIFY_POLL_DELAY < 60*60*24): # max delay 24 hrs 
                 SPOTIFY_POLL_DELAY *= 2
-            init.Log(f"Increased polling delay to {round(SPOTIFY_POLL_DELAY/60, 1)} min")
+            init.log(f"Increased polling delay to {round(SPOTIFY_POLL_DELAY/60, 1)} min")
+
+            init.log_error(views.get_mean_datetime_string() + " - Error occurred in main while polling for a song. ")
+            init.log_error(f"{traceback.format_exc()}")
+            init.log_error(f"{e}")
+            init.log_error("")
 
             return views.CurrentWeather(matrix)
-    elif checks % 1000 == 0:
-        init.Log(f"Next Spotify check will be in: {round((SPOTIFY_LAST_POLL + SPOTIFY_POLL_DELAY - now)/60, 1)} min")
+    elif checks % 1500 == 0:
+        print(f"Next Spotify check will be in: {round((SPOTIFY_LAST_POLL + SPOTIFY_POLL_DELAY - now), 0)} seconds")
 
-    # If it is between 9:30pm-6am, show the night clock 
+    # If it is between 9pm-6am, show the night clock 
     t = views.GetCurrentTime()
-    if (t.tm_hour == 21 and t.tm_min > 30) or t.tm_hour > 21 or t.tm_hour < 6:
+    if t.tm_hour > 20 or t.tm_hour < 6:
         if not isinstance(view, views.NightClock):
             return views.NightClock(matrix) 
         else:
             return view
 
     # Show today weather if it is the morning 6am-11am
-    if (t.tm_hour >= 6 and t.tm_hour < 11):
-        if not isinstance(view, views.TodayWeather):
-            return views.TodayWeather(matrix) 
-        else:
-            return view
+    # TODAY WEATHER BANNED !
+    # if (t.tm_hour >= 6 and t.tm_hour < 11):
+    #     if not isinstance(view, views.TodayWeather):
+    #         return views.TodayWeather(matrix) 
+    #     else:
+    #         return view
 
     # Just default to CurrentWeather if anything else is set
     if not isinstance(view, views.CurrentWeather):
@@ -109,21 +111,28 @@ if not isinstance(OVERRIDE_VIEW, type(None)):
     view = SetRelevantView(OVERRIDE_VIEW)
 else:
     view = SetRelevantView(views.CurrentWeather(matrix))
-
-
+    
 while True:
     try:
-        
-
         view = SetRelevantView(view)
         # If the display returns False, then the current view is done. Reset view to default
-        success = view.Display(matrix)
+        keep = view.Display(matrix)
 
-        if success == False:
+        if keep == False:
             view = None
 
+    except Exception as e:
+        init.log_error(" - The view returned an error somewhere. ")
+        init.log_error(f"{traceback.format_exc()}")
+        init.log_error(f"{e}")
+        init.log_error("")
+        views.record_error()
+        
+        view = None
+
+
     except KeyboardInterrupt:
-        print("Goodbye.\n")
+        print("\nGoodbye.\n")
         sys.exit(0)
 
 # font = bitmap_font.load_font("/fonts/creep2.bdf"); # a tad smaller, but monospaced, so actually less text

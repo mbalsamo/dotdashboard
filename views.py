@@ -3,17 +3,19 @@ import adafruit_ds3231
 import time
 import api_data as data
 from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics
-from init import i2c
+from init import i2c, log_error
 import os
 from PIL import Image
 import sys 
 import traceback
 
+error_count = 0
 
 class Line:
     def __init__(self, matrix):
         matrix.brightness = 100
 
+        self.debugName = ""
         self.isText = True
         self.text = ""
         self.isImage = False
@@ -28,6 +30,7 @@ class Line:
         self.animateLastChange = -1
         self.animateDelay = .1
         self.animateAutoScroll = True
+        self.state_scrolling = False
 
         self.isDate = False
         self.isClock = False
@@ -44,7 +47,7 @@ class Line:
         self.y = 10
         self.x_right_aligned = False
         self.max_x = 64
-        self.min_x = 1
+        self.min_x = 2
 
         # self.color = graphics.Color(0, 85, 170) # too dark
         # self.color = hex_to_rgb("0099cc")
@@ -123,13 +126,34 @@ class View:
         # subTextColor = 0xff8000
         self.canvas = matrix.CreateFrameCanvas()
         self.shownError = False
+    
+    loggedcount = 0
+    global_animation_start = time.monotonic()
+    was_scrolling = False
 
     def Display(self, matrix):
         now = time.monotonic()    
-        self.canvas.Clear()
+        self.canvas.Clear()            
+        self.loggedcount += 1
 
         # janky attempt to pause auto scrolling unless everything is at the starting position
-        pause_scroll = all((temp.x == 2 or not temp.isText or temp.isClock) for temp in self.lines)
+        no_lines_scrolling = all((temp.x == temp.min_x or not temp.isText or temp.isClock or temp.isImage or temp.IsProgressBar) for temp in self.lines)
+        
+        # If we stopped scrolling now, then change the global wait time
+        if self.was_scrolling and no_lines_scrolling:
+            data.printYellow("We were scrolling, just stopped. Adding 10 tick timer")
+            self.global_animation_start = now + 10
+
+        self.was_scrolling = not no_lines_scrolling
+        
+        # if self.loggedcount % 70 == 0:
+        #     if (not no_lines_scrolling):
+        #         data.printRed("someone is scrolling cus ")
+        #         for l in self.lines:
+        #             print(f"{l.debugName}\n x= {l.x} but min_x= {l.min_x}")
+        #         print()
+        #     else:
+        #         data.printRed("NOBODY IS SCROLLING??")
 
         for line in self.lines:
             if line.background == True:
@@ -150,22 +174,38 @@ class View:
 
                 line.length = graphics.DrawText(self.canvas, line.font, line.x, line.y, line.color, line.text)
 
-            
-            if now >= line.animateLastChange + line.animateDelay and ((line.x != line.min_x and line.animateInitialSlide) or (line.animateAutoScroll and line.length > line.max_x) and not pause_scroll):
+            # if self.loggedcount % 20 == 0:
+            #     print(f"{line.animateLastChange} was last change, delay is {line.animateDelay}, ")
+            # if (line.debugName == "Artist" or line.debugName == "Song") and self.loggedcount % 100 == 0:
+            #     data.printCyan("Looking at " + line.debugName)
+            #     print(f"now: {now}")
+            #     print(f"last change: {line.animateLastChange}")
+            #     print(f"animateDelay: {line.animateDelay}")
+            #     print(f"time to next: {line.animateLastChange + line.animateDelay - now}")
+            #     print(f"global_animation_start: {self.global_animation_start}")
+            #     print(f"state_scrolling: {line.state_scrolling}")
+
+            if (now >= line.animateLastChange + line.animateDelay and ((no_lines_scrolling and now >= self.global_animation_start) or line.state_scrolling)) and ((line.x != line.min_x and line.animateInitialSlide) or (line.animateAutoScroll and line.length > line.max_x)):
+                if self.loggedcount % 100 == 0:
+                    data.printCyan("scrolling " + line.debugName)
+                line.state_scrolling = True
                 line.animateLastChange = now
                 
                 line.x = scroll(line.min_x, line.max_x, line.x, line.length)
                 # pause when it hits left side
-                if line.x == 2:
-                    line.animateLastChange += 10
+                if line.x == line.min_x:
+                    data.printCyan("just stopped scrolling " + line.debugName)
+                    line.state_scrolling = False
 
             try: 
                 if line.isImage:
                     self.canvas.SetImage(line.image, line.x, line.y)
             except Exception as e:
+                
                 if not self.shownError:
                     print("Had an error while trying to render an image.")
-                    data.printRed(traceback.format_exc())
+                    record_error()
+                    log_error(traceback.format_exc())
                     print("Going to act like nothing happened")
                     print("-" * 40)
                     self.shownError = True
@@ -184,6 +224,12 @@ class View:
                 # currently does not abide by y coordinate 
                 draw_chart(self.canvas, line.hourly_forecast, line.high, line.low, line.x, line.max_x, 15, 30, line.color)
 
+
+        # draw the error dot
+        if (error_count > 0):
+                #            canvas, x1, y1, x2,     y2,  color):
+            graphics.DrawLine(self.canvas, 64, 32, 644, 32, hex_to_rgb("B0413E"))
+            
         self.canvas = matrix.SwapOnVSync(self.canvas)
         return self.canvas
 
@@ -267,7 +313,7 @@ class CurrentWeather(View):
                 self.line3.text = f"{temperature}°"
                 self.line5.image = img
 
-
+                conditions = conditions.lower()
                 if "cloudy" in conditions:
                     self.line2.color = hex_to_rgb("717171")
                     self.line3.color = hex_to_rgb("858585") #grey 
@@ -278,15 +324,16 @@ class CurrentWeather(View):
                     self.line2.color = hex_to_rgb("ffe53c") #yellow 
                     self.line3.color = hex_to_rgb("ffe53c")
                 elif "thunderstorm" in conditions:
-                    self.line2.color = hex_to_rgb("0085b8")
-                    self.line3.color = hex_to_rgb("0071a4") # dark blue
+                    self.line2.color = hex_to_rgb("#4E92A6") # dark blue
+                    self.line3.color = hex_to_rgb("#417A8B")
                 elif "heavy rain" in conditions:
-                    self.line2.color = hex_to_rgb("0055aa") #blue 
-                    self.line3.color = hex_to_rgb("0061b8")
+                    self.line2.color = hex_to_rgb("5d9fb3") #blue 
+                    self.line3.color = hex_to_rgb("#4E92A6")
                 elif "rain" in conditions:
-                    self.line2.color = hex_to_rgb("0055aa") #blue 
-                    self.line3.color = hex_to_rgb("0061b8")
+                    self.line2.color = hex_to_rgb("5d9fb3") #blue 
+                    self.line3.color = hex_to_rgb("#4E92A6")
                 else:
+                    print("Conditions didn't have specific color mapping: '" + conditions + "'")
                     color = data.get_dominant_color(img, num_colors = 2)
                     self.line2.color = graphics.Color(color[0], color[1], color[2])
                     self.line3.color = graphics.Color(min(color[0]+10, 250), min(color[1]+10, 250), min(color[2]+10, 250))
@@ -297,12 +344,14 @@ class CurrentWeather(View):
                 print("WEATHER FAILED. RIP")
                 data.printRed(traceback.format_exc())
                 data.printRed(e)
-                self.line2.color = graphics.Color(255, 20, 20)
-                self.line3.color = graphics.Color(255, 20, 20)
+                self.line2.color = graphics.Color(100, 20, 20)
+                self.line3.color = graphics.Color(100, 20, 20)
+                self.line2.text = f"{e}"
+                self.line3.text = ""
                 # self.line2.text = f"Err: {e} :("
 
             self.weatherUpdateCount += 1
-        # Now that the display is rendered, we have our lengths set. Make 3 in teh right spot and set 2's max x so that they don't overlap
+        # Now that the display is rendered, we have our lengths set. Make 3 in the right spot and set 2's max x so that they don't overlap
         # self.line3.x = 64 - self.line3.length
         self.line2.max_x = self.line3.x - 2
 
@@ -346,16 +395,16 @@ class TodayWeather(View):
         self.line_chart.background = False
         self.lines.append(self.line_chart)
 
-        IMG_HEIGHT = 11
-        self.line_img = Line(matrix)
-        self.line_img.isImage = True
-        self.line_img.y = 1
-        self.line_img.isText = False
-        self.line_img.animateInitialSlide = False
-        self.line_img.left_margin = 3
-        self.line_img.estimated_height = -IMG_HEIGHT
-        self.line_img.x_right_aligned = True
-        self.lines.append(self.line_img)
+        # IMG_HEIGHT = 11
+        # self.line_img = Line(matrix)
+        # self.line_img.isImage = True
+        # self.line_img.y = 1
+        # self.line_img.isText = False
+        # self.line_img.animateInitialSlide = False
+        # self.line_img.left_margin = 3
+        # self.line_img.estimated_height = -IMG_HEIGHT
+        # self.line_img.x_right_aligned = True
+        # self.lines.append(self.line_img)
 
         # self.line1.color = 0x0055aa # nice sky blue
         # # self.line1.color = 0xaaffff # diamond baby blue
@@ -377,6 +426,7 @@ class TodayWeather(View):
             self.WEATHER_LAST_UPDATE = now
                 
             high, low, hourly_forecast = data.get_today_weather(retry = True)
+            data.printCyan(f"Retrieved weather: high {high}, low {low}, hourly {hourly_forecast}")
             self.line_chart.hourly_forecast = hourly_forecast
             self.line_chart.high = high
             self.line_chart.low = low
@@ -406,7 +456,7 @@ class NightClock(View):
         # self.line1.SetFont("6x13")
         # self.line1.SetFont("t0-22b-uni.bdf") # huge
         self.lines.append(self.line1)
-        matrix.brightness = 30
+        matrix.brightness = 10
 
         # self.line1.color = 0xFF0000
         # self.subtextfont = bitmap_font.load_font("/assets/fonts/frucs6.bdf")
@@ -422,26 +472,30 @@ class SpotifyJams(View):
         print("Initializing the view for SPOTIFY JAMS")
         super().__init__(matrix)
         self.line1 = Line(matrix)
+        self.line1.debugName = "Clock"
         self.line1.animateInitialSlide = False
         self.line1.isClock = True
         self.line1.color = graphics.Color(154, 154, 154)
         self.line1.background = False
 
         self.line2 = Line(matrix)
+        self.line2.debugName = "Artist"
         self.line2.text = "<artist name>"
         self.line2.y = 20
         self.line2.SetFont("frucs6")
-        self.line2.color = hex_to_rgb("1f9000")
+        self.line2.color = graphics.Color(184, 188, 184)
         self.line2.max_x = 64 - 20 - 2
 
         self.line3 = Line(matrix)
+        self.line3.debugName = "Song"
         self.line3.text = "<song name>"
         self.line3.y = 29
         self.line3.SetFont("tb-8")
-        self.line3.color = hex_to_rgb("47b800")
+        self.line3.color = graphics.Color(184, 184, 184)
 
         IMG_HEIGHT = 21
         self.line4 = Line(matrix)
+        self.line4.debugName = "Album Art"
         self.line4.isImage = True
         self.line4.x = 64 - IMG_HEIGHT
         self.line4.y = 0
@@ -451,6 +505,7 @@ class SpotifyJams(View):
         self.line4.estimated_height = -IMG_HEIGHT
 
         self.line5 = Line(matrix)
+        self.line5.debugName = "Progress Bar"
         self.line5.IsText = False
         self.line5.IsProgressBar = True
         self.line5.background = False
@@ -460,7 +515,8 @@ class SpotifyJams(View):
         self.lines.append(self.line3)
         self.lines.append(self.line4)
         self.lines.append(self.line5)
-    
+
+    data.delete_all_albumart()
     SPOTIFY_LAST_UPDATE = -99999999
     SPOTIFY_DELAY = 12 # seconds
     MILLISECONDS = time.time() * 1000
@@ -476,7 +532,7 @@ class SpotifyJams(View):
             change = time.time() * 1000 - self.MILLISECONDS
             self.line5.progress = self.line5.progress + change
             self.MILLISECONDS = time.time() * 1000
-        elif now - self.TIME_PAUSED > 30:
+        elif now - self.TIME_PAUSED > 45:
             # if it has been paused for over 60 seconds, go back to clock
             return False
             ################################### there's a good chance this may have broken something here after the 60 second check
@@ -491,8 +547,8 @@ class SpotifyJams(View):
 
                 # If the song changed, then reset the spot 
                 if self.line3.text != f"{song}":
-                    self.line3.x = 1
-                    self.line2.x = 1
+                    self.line2.x = self.line2.min_x #UGH this is jank. Adding 1 because we expect it to scroll once.
+                    self.line3.x = self.line3.min_x 
                     self.MILLISECONDS = time.time() * 1000
                 if self.IS_PLAYING == True and is_playing == False: # If it was playing, but now it is not playing, then record time
                     self.TIME_PAUSED = now
@@ -511,7 +567,7 @@ class SpotifyJams(View):
                     self.line3.color = graphics.Color(min(color[0]+10, 250), min(color[1]+10, 250), min(color[2]+10, 250))
                     print("setting line colors to ", color[0], color[1], color[2])
                 else:
-                    print("Album color is None from view")
+                    print("We are not updating album colors")
 
                 if song == "":
                     print("Had spotify return no music")
@@ -526,6 +582,10 @@ class SpotifyJams(View):
                 print()
                 print("Increasing spotify check delay")
                 self.SPOTIFY_DELAY = 30
+                log_error([
+                    get_mean_datetime_string() + " - Spotify error from view",
+                    f"{traceback.format_exc()}"
+                ])
 
         # Now that the display is rendered, we have our lengths set. Make 3 in teh right spot and set 2's max x so that they don't overlap
         # self.line3.x = 64 - self.line3.length
@@ -569,7 +629,7 @@ def get_friendly_date_string(hideyear = True):
     year = t.tm_year
     weekday = days_of_week[t.tm_wday]
 
-    if day < 5:
+    if day < 4:
         ordinal_suffix = day_suffixes[day - 1] 
     else:
         ordinal_suffix = "th"
@@ -578,6 +638,10 @@ def get_friendly_date_string(hideyear = True):
         year = ""
     return "{}, {} {}{} {}".format(weekday, month_name[month - 1], day, ordinal_suffix, year)
 
+def get_mean_datetime_string():
+    t = GetCurrentTime()
+    
+    return "{}/{}/{} {}".format(t.tm_mday, t.tm_mon, t.tm_year, get_friendly_time_string())
 
 def scroll(min_x, max_x, pos, len):
     pos -= 1
@@ -629,6 +693,14 @@ def draw_chart(canvas, hourly_forecast, today_high, today_low, left_x_boundary, 
             
             normalized_forecast.append((x, -y+32+(height/2), forecast['hour']))
         
+        if (len(normalized_forecast) < 2):
+            data.printRed(f"We only had {len(normalized_forecast)} values in the normalized forecast for today?")
+            data.printRed(f"hourly_forecast: {hourly_forecast}")
+            data.printRed(f"today_high: {today_high}")
+            data.printRed(f"today_low: {today_low}")
+            data.printRed(f"")
+            return
+
         # Draw a line connecting the normalized forecast data
         prev_x, prev_y, prev_hr = normalized_forecast[0]
         for x, y, hr in normalized_forecast[1:]:
@@ -640,6 +712,11 @@ def draw_chart(canvas, hourly_forecast, today_high, today_low, left_x_boundary, 
             prev_x, prev_y = x, y
 
     except Exception as e:
-        print("Drawing the chart did not go as planned.")
-        data.printRed(traceback.format_exc())
+        record_error()
+        log_error("Drawing the chart did not go as planned.")
+        log_error(traceback.format_exc())
         data.printRed(e)
+
+def record_error(count = 1):
+    global error_count
+    error_count += count

@@ -8,7 +8,7 @@ import datetime
 import requests
 import binascii
 import random
-from init import Log
+from init import log, log_error
 from PIL import Image
 from io import BytesIO
 import traceback
@@ -22,10 +22,10 @@ SPOTIFY_MANUAL_AUTH_CODE = secrets.SPOTIFY_MANUAL_AUTH_CODE
 def get_current_weather(fake = False, retry = False):
     try:
         if fake or "fake" in sys.argv:
-            Log("Returning fake weather report")
+            log("Returning fake weather report")
             return "Blue Skies Are Here", 75, get_weather_image("sun")
-        Log("-" * 40)
-        Log("Attempting to summon the meteorologists for the weather")
+        log("-" * 40)
+        log("Attempting to summon the meteorologists for the weather")
         base_url = f"https://dataservice.accuweather.com/currentconditions/v1/{ACCUWEATHER_LOCATION_KEY}"
         params = {'apikey': ACCUWEATHER_API_KEY_CORE}
 
@@ -33,9 +33,9 @@ def get_current_weather(fake = False, retry = False):
         response.raise_for_status()
 
         if response.status_code == 200:
-            Log("SUCCESS The meteorologists came through for us. Yeahhhhhhhh")
+            log("SUCCESS The meteorologists came through for us. Yeahhhhhhhh")
         else:
-            Log("The meteorologists ARE GONE. ERROR" + response.status_code)
+            log("The meteorologists ARE GONE. ERROR" + response.status_code)
             return "Response err:", response.status_code
 
         printJSON(response.json())
@@ -45,14 +45,14 @@ def get_current_weather(fake = False, retry = False):
         weather_text = data['WeatherText']
         temperature = round(data['Temperature']['Imperial']['Value'])
 
-        Log(f"It is currently {weather_text}, and {temperature}F")
+        log(f"It is currently {weather_text}, and {temperature}F")
         return weather_text, temperature, get_weather_image(weather_text)
     except Exception as e:
-        Log("Weather check had an error.")
+        log("Weather check had an error.")
         traceback.print_exc()
         
         if retry:
-            Log("Going to wait 4 seconds and retry the weather again.")
+            log("Going to wait 4 seconds and retry the weather again.")
             time.sleep(10)
             return get_current_weather(retry = False)
 
@@ -63,7 +63,7 @@ def get_today_weather(fake = False, retry = False):
     try:
         if fake or "fake" in sys.argv:
             print("Returning fake weather report")
-            return 75
+            return 75, 50, [50,60,66,68,73,66,60]
 
         print("-" * 40)
         print("Attempting to summon the meteorologists for the weather")
@@ -154,14 +154,14 @@ def get_weather_image(conditions):
     if filename == "":
         return ""
 
-    Log(f"Getting {filename} weather image for conditions: {conditions}")
+    log(f"Getting {filename} weather image for conditions: {conditions}")
 
     try:
         img = Image.open(f"{dir}assets/weather/{filename}")
         img = img.convert('RGB')
         
     except Exception as e:
-        Log(f"Failed to open the file '{filename}' for conditions '{conditions}'")
+        log(f"Failed to open the file '{filename}' for conditions '{conditions}'")
         return ""
 
     print(img)
@@ -179,7 +179,8 @@ def get_album_art(url):
     # If we already have the file, just use that
     if os.path.isfile(file_path):
         img = Image.open(file_path)
-        color = get_dominant_color(img)
+        color = None
+        # color = get_dominant_color(img)
     else:
         try:
             # If the file does not exist, download the image
@@ -191,14 +192,11 @@ def get_album_art(url):
             img = bigimg.resize((21, 21))
             img.save(file_path)
 
-            Log("Using image " + file_path)
+            log("Using image " + file_path)
             print(img)
             # Delete all other files in the directory
-            for filename in os.listdir(f'{dir}assets/albumart'):
-                if filename != f"{name}.jpg":
-                    print(f"Deleting old file {filename}")
-                    os.remove(f"{dir}/assets/albumart/{filename}")
-                    
+            delete_all_albumart(skip=name)
+
         except Exception as e:
             LOG("HAD SOME PROBLEMS IN GETTING ALBUM ART??")
             print(e)
@@ -206,13 +204,22 @@ def get_album_art(url):
 
     return img, color
 
+def delete_all_albumart(skip = ""):
+    dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "")
+    for filename in os.listdir(f'{dir}assets/albumart'):
+        if filename != f"{skip}.jpg":
+            print(f"Deleting old file {filename}")
+            os.remove(f"{dir}/assets/albumart/{filename}")
+
+
+
 def get_spotify_token(fake = False):
     if fake or "fake" in sys.argv:
-        Log("Returning fake token")
+        log("Returning fake token")
         return "5"
     
-    Log("-" * 40)
-    Log("Attempting to initially get the spotify token")
+    log("-" * 40)
+    log("Attempting to initially get the spotify token")
 
     url = "https://accounts.spotify.com/api/token"
     client_creds = f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}"
@@ -224,18 +231,18 @@ def get_spotify_token(fake = False):
     data = f"grant_type=authorization_code&code={SPOTIFY_MANUAL_AUTH_CODE}&redirect_uri=https://michaelbalsamo.com"
 
     response = requests.post(url, headers=headers, data=data)
-    Log("API Response from Spotify Token request is:", response.status_code)
+    log("API Response from Spotify Token request is:", response.status_code)
 
     printYellow(response.content)
     token_info = json.loads(response.content)
-    Log()
+    log()
 
     return token_info
 
 def get_current_playing_track(fake = False, retry = True):
     if fake or "fake" in sys.argv:
-        Log("Returning fake music")
-        return "Bippity Bop", "The Boppers", get_weather_image("sun"), None, 5, 9, False
+        print("Returning fake music")
+        return "Bippity Boppity aaaaa", "The Boppers Are Here", get_weather_image("sun"), None, 5, 9, False
 
     SPOTIFY_ACCESS_TOKEN = read_spotify_file("access_token")
     url = "https://api.spotify.com/v1/me/player/currently-playing"
@@ -244,24 +251,51 @@ def get_current_playing_track(fake = False, retry = True):
         response = requests.get(url, headers=headers)
         response.raise_for_status()
     except requests.exceptions.HTTPError as errh:
-        print("Http Error: ", errh)
-    except requests.exceptions.ConnectionError as errc:
-        print("Error Connecting: ", errc)
-    except requests.exceptions.Timeout as errt:
-        print("Timeout Error: ", errt)
-    except requests.exceptions.RequestException as err:
-        print("Something Else: ", err)
+        log("Http Error while in get_current_playing_track(): ")
+        log_error(traceback.format_exc())
+        log("We probably just need a new token.")
 
-    # printCyan(headers)
-    # Log("API Response from Spotify Current Song Request is:", response.status_code)
-    if response.status_code == 204:
-        Log("There is no music playing!")
-        return "", "", "", None, 0, 0, False
+    except requests.exceptions.ConnectionError as errc:
+        log_error("Error Connecting while in get_current_playing_track(): ")
+        log_error(traceback.format_exc())
+
+    except requests.exceptions.Timeout as errt:
+        log_error("Timeout Error while in get_current_playing_track(): ")
+        log_error(traceback.format_exc())
+
+    except requests.exceptions.RequestException as err:
+        log_error("Something Else while in get_current_playing_track(): ")
+        log_error(traceback.format_exc())
+
+    except Exception as e:
+        log_error("other error while in get_current_playing_track()??")
+        log_error(traceback.format_exc())
+
+    if response is None or response.status_code is None:
+        log_error("response is null from checking current playing track in api_data???? i don't know whats happening")
 
     if response.status_code == 401 and retry:
-        Log("Spotify Current Song Request recieved 401 error code. Going to try to refresh the access token")
+        log_error("Spotify Current Song Request recieved 401 error code. Going to try to refresh the access token")
         refresh_spotify_token()
         return get_current_playing_track(retry=False)
+
+    if response.status_code == 204:
+        log("There is no music playing!")
+        return "", "", "", None, 0, 0, False
+
+    if response.status_code == 429:
+        log_error("!!!")
+        log_error("!!!")
+        log_error("We are checking spotify too often. Need to lower the rate checking.")
+        log_error("!!!")
+        log_error("!!!")
+        return "", "", "", None, 0, 0, False
+
+    if response.status_code != 200:
+        log_error(f"ERROR WE GOT STATUS CODE {response.status_code} WHEN CHECKING FOR SONG??")
+
+        return "", "", "", None, 0, 0, False
+
 
     data = response.json()
 
@@ -273,20 +307,20 @@ def get_current_playing_track(fake = False, retry = True):
     duration_ms = data['item']['duration_ms']
     progress_ms = data['progress_ms']
     is_playing = data.get('is_playing', False)
-    Log(f"Song :\033[94m {song_name}\033[00m")
-    Log(f"Artist Names: \033[94m {artist_names_string}\033[00m")
-    Log("-" * 40)
+    print(f"Song :\033[94m {song_name}\033[00m")
+    print(f"Artist Names: \033[94m {artist_names_string}\033[00m")
+    print("-" * 40)
     image, color = get_album_art(albumart)
 
     return song_name, artist_names_string, image, color, progress_ms, duration_ms, is_playing
 
 def refresh_spotify_token():
     if "fake" in sys.argv:
-        Log("Returning fake refreshed token")
+        log("Returning fake refreshed token")
         return ""
 
-    Log("-" * 40)
-    Log("Attempting to refresh the spotify token with refresh: ")
+    log("-" * 40)
+    log("Attempting to refresh the spotify token with refresh: ")
     
     SPOTIFY_REFRESH_TOKEN = read_spotify_file("refresh_token")
     printLightPurple(SPOTIFY_REFRESH_TOKEN)
@@ -307,9 +341,9 @@ def refresh_spotify_token():
 
     printGreen("REFRESHED CODE WAS A SUCCESS!!??!? Writing new token to the secrets file")
     if 'refresh_token' in response.json():
-        Log("A new refresh token was given in response! ")
+        log("A new refresh token was given in response! ")
     else:
-        Log("We did not recieve a new refresh token. Saving the old one.")
+        log("We did not recieve a new refresh token. Saving the old one.")
         output['refresh_token'] = SPOTIFY_REFRESH_TOKEN
 
     with open('spotify_secrets.py', 'w') as file:
@@ -338,11 +372,21 @@ def get_dominant_color(pil_img, palette_size=16, num_colors=10):
     i = 1
     print("Dominant colors in this image:")
     print(dominant_colors)
-    while out[0] < 70 and out[1] < 70 and out[2] < 70 and i != num_colors:
+    DARKEST_ALLOWED_COLOR = 80
+
+    while out[0] < DARKEST_ALLOWED_COLOR and out[1] < DARKEST_ALLOWED_COLOR and out[2] < DARKEST_ALLOWED_COLOR and i != num_colors:
         print(f"color {i} was too dark ({out}). Going to next color.")
         out = dominant_colors[i]
         i += 1
-    Log(f"decided on color {out}")
+    
+    # If colors are still too dark, slowly increase until we find a value that's right. Increase all to try to keep same shade?
+    while out[0] < DARKEST_ALLOWED_COLOR and out[1] < DARKEST_ALLOWED_COLOR and out[2] < DARKEST_ALLOWED_COLOR:
+        print("Colors are still too dark. Increasing by 10")
+        out[0] += 10
+        out[1] += 10
+        out[2] += 10
+
+    print(f"decided on color {out}")
 
     return out
 
