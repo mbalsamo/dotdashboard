@@ -168,6 +168,38 @@ def get_weather_image(conditions):
     return img
 
 
+def get_current_date():
+    url = "http://worldtimeapi.org/api/timezone/America/Chicago"
+    
+    try:
+        response = requests.get(url)
+        response.raise_for_status() 
+        data = response.json()
+        
+        date_iso = data['datetime']
+        print(data)
+        # Parse the datetime string into a datetime object
+        date_part, time_part = date_iso.split("T")
+        year, month, day = map(int, date_part.split("-"))
+        time_part = time_part.split(".")[0]  # Ignore microseconds
+        hour, minute, second = map(int, time_part.split(":"))
+        day_of_week = data["day_of_week"]
+        
+        return {
+            'month': month,
+            'day': day,
+            'year': year,
+            'hour': hour,
+            'minute': minute,
+            'second': second,
+            'day_of_week': day_of_week
+        }
+    
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching date and time: {e}")
+        return None
+
+
 def get_album_art(url):
     # Going to use the url as the name
     name = url.split('/')[-1]

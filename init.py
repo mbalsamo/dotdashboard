@@ -31,7 +31,8 @@ def DoTheInitThings():
     options.panel_type = ""
 
     # SetDateTime(hour=20, minute=9, second=40)
-    # SetDateTime(8, 21, 2024, 16, 4, 20, 4)
+    # SetDateTime(weekday=2)
+    # SetDateTime(9, 10, 2024, 15, 13, 40, 3)
 
     matrix = RGBMatrix(options = options)
     do_loading_screen(matrix)

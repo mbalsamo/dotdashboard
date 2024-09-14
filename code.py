@@ -13,8 +13,9 @@ import time
 print("|/\\" * 30)
 print("|\\/" * 30)
 
+date = views.GetCurrentTime()
 init.log("\n\n-------------------------------------")
-init.log(f"Initializing new boot! {views.GetCurrentTime().tm_mon} {views.GetCurrentTime().tm_mday} {views.GetCurrentTime().tm_hour}:{views.GetCurrentTime().tm_min}")
+init.log(f"Initializing new boot! {date.tm_mon} {date.tm_mday} {date.tm_hour}:{date.tm_min}")
 
 matrix = init.DoTheInitThings()
 OVERRIDE_VIEW = None
@@ -38,6 +39,20 @@ checks = 0
 # When this launches on boot, we need to give it time to connect and do its thing
 if "on-boot" in sys.argv:
     time.sleep(18)
+
+# Double check the date
+retrieved_date = data.get_current_date()
+if retrieved_date:
+    init.SetDateTime(
+        month=retrieved_date['month'],
+        day=retrieved_date['day'],
+        year=retrieved_date['year'],
+        hour=retrieved_date['hour'],
+        minute=retrieved_date['minute'],
+        second=retrieved_date['second'],
+        weekday=retrieved_date['day_of_week']
+    )
+
 
 def SetRelevantView(view):
     if not isinstance(OVERRIDE_VIEW, type(None)):

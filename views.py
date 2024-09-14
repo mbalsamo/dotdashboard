@@ -309,8 +309,9 @@ class CurrentWeather(View):
             try:
                 conditions, temperature, img = data.get_current_weather(retry = True)
                 self.line2.text = f"{conditions}"
-                self.line2.x = 2
                 self.line3.text = f"{temperature}°"
+                self.line2.x = 2
+                self.line2.max_x = 64 - (4 * len(self.line3.text))
                 self.line5.image = img
 
                 conditions = conditions.lower()
@@ -629,8 +630,8 @@ def get_friendly_date_string(hideyear = True):
     year = t.tm_year
     weekday = days_of_week[t.tm_wday]
 
-    if day < 4:
-        ordinal_suffix = day_suffixes[day - 1] 
+    if (day % 10) < 4 and day not in [11, 12, 13]:
+        ordinal_suffix = day_suffixes[(day % 10) - 1] 
     else:
         ordinal_suffix = "th"
 
